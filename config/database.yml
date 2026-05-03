@@ -5,7 +5,7 @@ default: &default
   username: <%= ENV.fetch("HOMIE_DATABASE_USERNAME", ENV["USER"]) %>
   password: <%= ENV["HOMIE_DATABASE_PASSWORD"] %>
   host: <%= ENV.fetch("HOMIE_DATABASE_HOST", "localhost") %>
-  port: <%= ENV.fetch("HOMIE_DATABASE_PORT", 5432) %>
+  port: <%= ENV.fetch("HOMIE_DATABASE_PORT", 5433) %>
 
 development:
   <<: *default
