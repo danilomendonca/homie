@@ -1,0 +1,22 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
+  username: <%= ENV.fetch("HOMIE_DATABASE_USERNAME", ENV["USER"]) %>
+  password: <%= ENV["HOMIE_DATABASE_PASSWORD"] %>
+  host: <%= ENV.fetch("HOMIE_DATABASE_HOST", "localhost") %>
+  port: <%= ENV.fetch("HOMIE_DATABASE_PORT", 5432) %>
+
+development:
+  <<: *default
+  database: homie_development
+
+test:
+  <<: *default
+  database: homie_test
+
+production:
+  <<: *default
+  database: <%= ENV.fetch("HOMIE_DATABASE", "homie_production") %>
+  username: <%= ENV["HOMIE_DATABASE_USERNAME"] %>
+  password: <%= ENV["HOMIE_DATABASE_PASSWORD"] %>
