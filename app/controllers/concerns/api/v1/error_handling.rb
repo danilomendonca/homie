@@ -17,7 +17,7 @@ module Api
       def render_not_found(exception = nil)
         message = exception.is_a?(ActiveRecord::RecordNotFound) && exception.model ?
           "#{exception.model} not found" : "Not found"
-        render status: :not_found, json: { errors: [{ message: message }] }
+        render status: :not_found, json: { errors: [ { message: message } ] }
       end
 
       def render_validation_error(exception)
@@ -29,15 +29,15 @@ module Api
 
       def render_record_not_unique(_exception)
         render status: :unprocessable_entity,
-          json: { errors: [{ message: "Conflict on a unique field" }] }
+          json: { errors: [ { message: "Conflict on a unique field" } ] }
       end
 
       def render_bad_request(exception)
-        render status: :bad_request, json: { errors: [{ message: exception.message }] }
+        render status: :bad_request, json: { errors: [ { message: exception.message } ] }
       end
 
       def render_conflict(exception)
-        render status: :conflict, json: { errors: [{ message: exception.message }] }
+        render status: :conflict, json: { errors: [ { message: exception.message } ] }
       end
     end
   end
