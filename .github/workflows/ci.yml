@@ -53,16 +53,28 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # services:
-    #  redis:
-    #    image: valkey/valkey:8
-    #    ports:
-    #      - 6379:6379
-    #    options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
-    steps:
-      - name: Install packages
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libvips
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: homie
+          POSTGRES_PASSWORD: homie
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
+    env:
+      RAILS_ENV: test
+      HOMIE_DATABASE_HOST: 127.0.0.1
+      HOMIE_DATABASE_PORT: 5433
+      HOMIE_DATABASE_USERNAME: homie
+      HOMIE_DATABASE_PASSWORD: homie
+
+    steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -72,8 +84,4 @@ jobs:
           bundler-cache: true
 
       - name: Run tests
-        env:
-          RAILS_ENV: test
-          # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
-          # REDIS_URL: redis://localhost:6379/0
-        run: bin/rails db:test:prepare test
+        run: bin/rails db:test:prepare && bundle exec rspec
