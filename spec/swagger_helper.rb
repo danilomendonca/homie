@@ -30,6 +30,16 @@ RSpec.configure do |config|
               }
             },
             required: %w[errors]
+          },
+          category: {
+            type: :object,
+            properties: {
+              id:         { type: :string, format: :uuid },
+              name:       { type: :string },
+              created_at: { type: :string, format: :"date-time" },
+              updated_at: { type: :string, format: :"date-time" }
+            },
+            required: %w[id name created_at updated_at]
           }
         }
       }

@@ -8,7 +8,7 @@ Rails.application.routes.draw do
 
   namespace :api, path: nil do
     namespace :v1 do
-      # resources land here in phases 2–6
+      resources :categories
     end
   end
 
