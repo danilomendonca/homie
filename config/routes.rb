@@ -9,7 +9,11 @@ Rails.application.routes.draw do
   namespace :api, path: nil do
     namespace :v1 do
       resources :categories
-      resources :products
+      resources :products do
+        collection do
+          post :bulk, action: :bulk_create
+        end
+      end
     end
   end
 

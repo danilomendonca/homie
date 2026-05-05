@@ -104,6 +104,8 @@ CREATE TABLE public.products (
     low_stock_threshold numeric(12,3),
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    brand public.citext,
+    notes text,
     CONSTRAINT products_low_stock_threshold_non_negative CHECK (((low_stock_threshold IS NULL) OR (low_stock_threshold >= (0)::numeric)))
 );
 
@@ -222,6 +224,7 @@ ALTER TABLE ONLY public.products
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260505085915'),
 ('20260503012002'),
 ('20260503012001'),
 ('20260503012000'),

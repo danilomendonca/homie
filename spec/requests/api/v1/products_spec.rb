@@ -96,6 +96,23 @@ RSpec.describe "Api::V1::Products", type: :request do
           expect(body.map { |p| p["name"] }).to eq(%w[Milk])
         end
       end
+
+      response "200", "search matches brand as well as name" do
+        schema type: :array, items: { "$ref" => "#/components/schemas/product" }
+        let(:category_id) { nil }
+        let(:search) { "nesc" }
+
+        before do
+          create(:product, name: "Coffee", brand: "Nescafé")
+          create(:product, name: "Tea")
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body.map { |p| p["name"] }).to eq(%w[Coffee])
+          expect(body.first["brand"]).to eq("Nescafé")
+        end
+      end
     end
 
     post "Creates a product" do
@@ -128,7 +145,7 @@ RSpec.describe "Api::V1::Products", type: :request do
         run_test! do |response|
           body = JSON.parse(response.body)
           expect(body["name"]).to eq("Milk")
-          expect(body["category_id"]).to eq(category.id)
+          expect(body["category"]).to eq({ "id" => category.id, "name" => "Dairy" })
           expect(body["unit_type"]).to eq("volume")
           expect(body["low_stock_threshold"]).to eq(1.5)
           expect(body["id"]).to be_present
@@ -142,7 +159,9 @@ RSpec.describe "Api::V1::Products", type: :request do
         run_test! do |response|
           body = JSON.parse(response.body)
           expect(body["name"]).to eq("Apple")
-          expect(body["category_id"]).to be_nil
+          expect(body["category"]).to be_nil
+          expect(body["brand"]).to be_nil
+          expect(body["notes"]).to be_nil
           expect(body["low_stock_threshold"]).to be_nil
         end
       end
@@ -153,7 +172,7 @@ RSpec.describe "Api::V1::Products", type: :request do
 
         run_test! do |response|
           body = JSON.parse(response.body)
-          expect(body["category_id"]).to be_nil
+          expect(body["category"]).to be_nil
         end
       end
 
@@ -321,7 +340,7 @@ RSpec.describe "Api::V1::Products", type: :request do
 
         run_test! do |response|
           body = JSON.parse(response.body)
-          expect(body["category_id"]).to be_nil
+          expect(body["category"]).to be_nil
           expect(product.reload.category_id).to be_nil
         end
       end
@@ -496,6 +515,166 @@ RSpec.describe "Api::V1::Products", type: :request do
       response "404", "returns 404 for unknown id" do
         schema "$ref" => "#/components/schemas/error_envelope"
         let(:id) { "00000000-0000-0000-0000-000000000000" }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["errors"].first["message"]).to be_present
+        end
+      end
+    end
+  end
+
+  path "/v1/products/bulk" do
+    post "Bulk-creates products" do
+      tags "Products"
+      consumes "application/json"
+      produces "application/json"
+      parameter name: :payload, in: :body,
+        schema: { "$ref" => "#/components/schemas/product_bulk_request" }
+
+      response "201", "creates multiple products" do
+        schema "$ref" => "#/components/schemas/product_bulk_response"
+        let(:category) { create(:category, name: "Beverages") }
+        let(:payload) do
+          {
+            products: [
+              { name: "Bulk1", unit_type: "unit", category_id: category.id },
+              { name: "Bulk2", unit_type: "weight", brand: "Acme", notes: "keep cold" }
+            ]
+          }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["created"].length).to eq(2)
+          first, second = body["created"]
+          expect(first["name"]).to eq("Bulk1")
+          expect(first["category"]).to eq({ "id" => category.id, "name" => "Beverages" })
+          expect(second["name"]).to eq("Bulk2")
+          expect(second["category"]).to be_nil
+          expect(second["brand"]).to eq("Acme")
+          expect(second["notes"]).to eq("keep cold")
+          expect(Product.count).to eq(2)
+        end
+      end
+
+      response "201", "accepts an empty products array" do
+        schema "$ref" => "#/components/schemas/product_bulk_response"
+        let(:payload) { { products: [] } }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body).to eq({ "created" => [] })
+          expect(Product.count).to eq(0)
+        end
+      end
+
+      response "422", "rolls back when one item is invalid" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:payload) do
+          {
+            products: [
+              { name: "Good", unit_type: "unit" },
+              { unit_type: "unit" }
+            ]
+          }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          name_errors = body["errors"].select { |e| e["field"] == "name" }
+          expect(name_errors).not_to be_empty
+          expect(name_errors.first["index"]).to eq(1)
+          expect(Product.count).to eq(0)
+        end
+      end
+
+      response "422", "reports errors for every invalid item, not just the first" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:payload) do
+          {
+            products: [
+              { name: "OK", unit_type: "unit" },
+              { unit_type: "unit" },
+              { name: "Also OK", unit_type: "foo" }
+            ]
+          }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          indexes = body["errors"].map { |e| e["index"] }.uniq.sort
+          expect(indexes).to eq([ 1, 2 ])
+          expect(Product.count).to eq(0)
+        end
+      end
+
+      response "422", "detects in-batch duplicate names (case-insensitive)" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:payload) do
+          {
+            products: [
+              { name: "Coffee", unit_type: "unit" },
+              { name: "coffee", unit_type: "unit" }
+            ]
+          }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          dup = body["errors"].find { |e| e["field"] == "name" && e["message"].include?("duplicated") }
+          expect(dup).not_to be_nil
+          expect(dup["index"]).to eq(1)
+          expect(Product.count).to eq(0)
+        end
+      end
+
+      response "422", "rejects nonexistent category_id with the right index" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:payload) do
+          {
+            products: [
+              { name: "OK", unit_type: "unit" },
+              { name: "Bad", unit_type: "unit", category_id: SecureRandom.uuid }
+            ]
+          }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          err = body["errors"].find { |e| e["field"] == "category_id" }
+          expect(err).not_to be_nil
+          expect(err["index"]).to eq(1)
+          expect(Product.count).to eq(0)
+        end
+      end
+
+      response "400", "rejects body without products key" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:payload) { {} }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["errors"].first["message"]).to be_present
+        end
+      end
+
+      response "400", "rejects products array exceeding the limit" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:payload) do
+          { products: Array.new(501) { |i| { name: "P#{i}", unit_type: "unit" } } }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["errors"].first["message"]).to match(/maximum/)
+          expect(Product.count).to eq(0)
+        end
+      end
+
+      response "400", "rejects when products is not an array" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:payload) { { products: "not an array" } }
 
         run_test! do |response|
           body = JSON.parse(response.body)

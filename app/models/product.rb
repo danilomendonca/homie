@@ -9,6 +9,8 @@ class Product < ApplicationRecord
   validates :low_stock_threshold,
     numericality: { greater_than_or_equal_to: 0 },
     allow_nil: true
+  validates :brand, length: { maximum: 100 }, allow_nil: true
+  validates :notes, length: { maximum: 1000 }, allow_nil: true
   validate :low_stock_threshold_must_be_whole_number_when_unit
   validate :category_must_exist
 

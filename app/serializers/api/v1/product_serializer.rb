@@ -7,7 +7,9 @@ module Api
         {
           id: product.id,
           name: product.name,
-          category_id: product.category_id,
+          brand: product.brand,
+          notes: product.notes,
+          category: product.category && { id: product.category.id, name: product.category.name },
           unit_type: product.unit_type,
           low_stock_threshold: product.low_stock_threshold&.to_f,
           created_at: product.created_at.utc.iso8601,

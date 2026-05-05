@@ -16,7 +16,8 @@ RSpec.configure do |config|
           error_object: {
             type: :object,
             properties: {
-              field: { type: :string },
+              index:   { type: :integer },
+              field:   { type: :string },
               message: { type: :string }
             },
             required: %w[message]
@@ -44,15 +45,57 @@ RSpec.configure do |config|
           product: {
             type: :object,
             properties: {
-              id:                  { type: :string, format: :uuid },
-              name:                { type: :string },
-              category_id:         { type: :string, format: :uuid, nullable: true },
+              id:    { type: :string, format: :uuid },
+              name:  { type: :string },
+              brand: { type: :string, nullable: true },
+              notes: { type: :string, nullable: true },
+              category: {
+                type: :object,
+                nullable: true,
+                properties: {
+                  id:   { type: :string, format: :uuid },
+                  name: { type: :string }
+                },
+                required: %w[id name]
+              },
               unit_type:           { type: :string, enum: %w[unit weight volume] },
               low_stock_threshold: { type: :number, nullable: true },
               created_at:          { type: :string, format: :"date-time" },
               updated_at:          { type: :string, format: :"date-time" }
             },
-            required: %w[id name category_id unit_type low_stock_threshold created_at updated_at]
+            required: %w[id name brand notes category unit_type low_stock_threshold created_at updated_at]
+          },
+          product_bulk_request: {
+            type: :object,
+            properties: {
+              products: {
+                type: :array,
+                maxItems: 500,
+                items: {
+                  type: :object,
+                  properties: {
+                    name:                { type: :string },
+                    brand:               { type: :string, nullable: true },
+                    notes:               { type: :string, nullable: true },
+                    category_id:         { type: :string, format: :uuid, nullable: true },
+                    unit_type:           { type: :string, enum: %w[unit weight volume] },
+                    low_stock_threshold: { type: :number, nullable: true }
+                  },
+                  required: %w[name unit_type]
+                }
+              }
+            },
+            required: %w[products]
+          },
+          product_bulk_response: {
+            type: :object,
+            properties: {
+              created: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/product" }
+              }
+            },
+            required: %w[created]
           }
         }
       }

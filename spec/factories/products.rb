@@ -4,5 +4,7 @@ FactoryBot.define do
     unit_type { :unit }
     category { nil }
     low_stock_threshold { nil }
+    brand { nil }
+    notes { nil }
   end
 end

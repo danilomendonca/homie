@@ -78,6 +78,38 @@ RSpec.describe Product, type: :model do
       end
     end
 
+    describe "brand length" do
+      it "accepts 100 characters" do
+        expect(build(:product, brand: "a" * 100)).to be_valid
+      end
+
+      it "rejects 101 characters" do
+        product = build(:product, brand: "a" * 101)
+        expect(product).not_to be_valid
+        expect(product.errors[:brand]).to be_present
+      end
+
+      it "accepts nil" do
+        expect(build(:product, brand: nil)).to be_valid
+      end
+    end
+
+    describe "notes length" do
+      it "accepts 1000 characters" do
+        expect(build(:product, notes: "a" * 1000)).to be_valid
+      end
+
+      it "rejects 1001 characters" do
+        product = build(:product, notes: "a" * 1001)
+        expect(product).not_to be_valid
+        expect(product.errors[:notes]).to be_present
+      end
+
+      it "accepts nil" do
+        expect(build(:product, notes: nil)).to be_valid
+      end
+    end
+
     describe "category_must_exist" do
       it "is valid with category_id = nil" do
         expect(build(:product, category: nil)).to be_valid
