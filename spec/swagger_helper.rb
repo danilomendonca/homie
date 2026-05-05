@@ -40,6 +40,19 @@ RSpec.configure do |config|
               updated_at: { type: :string, format: :"date-time" }
             },
             required: %w[id name created_at updated_at]
+          },
+          product: {
+            type: :object,
+            properties: {
+              id:                  { type: :string, format: :uuid },
+              name:                { type: :string },
+              category_id:         { type: :string, format: :uuid, nullable: true },
+              unit_type:           { type: :string, enum: %w[unit weight volume] },
+              low_stock_threshold: { type: :number, nullable: true },
+              created_at:          { type: :string, format: :"date-time" },
+              updated_at:          { type: :string, format: :"date-time" }
+            },
+            required: %w[id name category_id unit_type low_stock_threshold created_at updated_at]
           }
         }
       }
