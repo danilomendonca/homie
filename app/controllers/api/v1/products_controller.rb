@@ -56,20 +56,21 @@ module Api
             json: { errors: [ { message: "products array exceeds maximum of #{BULK_LIMIT} items" } ] }
         end
 
-        products_with_index = params[:products].each_with_index.map do |attrs, index|
+        prepared = params[:products].each_with_index.map do |attrs, index|
           wrapped = attrs.is_a?(ActionController::Parameters) ? attrs : ActionController::Parameters.new(attrs.to_h)
           permitted = wrapped.permit(:name, :brand, :notes, :category_id, :unit_type, :low_stock_threshold)
-          [ Product.new(permitted), index ]
+          raw_attrs = attrs.is_a?(ActionController::Parameters) ? attrs.to_unsafe_h : attrs.to_h
+          [ Product.new(permitted), index, raw_attrs ]
         end
 
-        errors = collect_bulk_errors(products_with_index)
-        return render status: :unprocessable_entity, json: { errors: errors } if errors.any?
+        failures = collect_bulk_failures(prepared)
+        return render status: :unprocessable_entity, json: { failed: failures } if failures.any?
 
         Product.transaction do
-          products_with_index.each { |product, _| product.save! }
+          prepared.each { |product, _, _| product.save! }
         end
 
-        ids = products_with_index.map { |p, _| p.id }
+        ids = prepared.map { |p, _, _| p.id }
         loaded = Product.includes(:category).where(id: ids).index_by(&:id)
         serialized = ids.map { |id| ProductSerializer.serialize(loaded[id]) }
 
@@ -86,27 +87,31 @@ module Api
         params.permit(:name, :brand, :notes, :category_id, :unit_type, :low_stock_threshold)
       end
 
-      def collect_bulk_errors(products_with_index)
-        errors = []
+      def collect_bulk_failures(prepared)
+        failures = {}
         seen_names = {}
 
-        products_with_index.each do |product, index|
+        prepared.each do |product, index, raw|
+          item_errors = []
           unless product.valid?
             product.errors.each do |err|
-              errors << { index: index, field: err.attribute.to_s, message: err.message }
+              item_errors << { field: err.attribute.to_s, message: err.message }
             end
           end
 
-          next if product.name.blank?
-          key = product.name.to_s.downcase
-          if seen_names.key?(key)
-            errors << { index: index, field: "name", message: "is duplicated within bulk request" }
-          else
-            seen_names[key] = index
+          unless product.name.blank?
+            key = product.name.to_s.downcase
+            if seen_names.key?(key)
+              item_errors << { field: "name", message: "is duplicated within bulk request" }
+            else
+              seen_names[key] = index
+            end
           end
+
+          failures[index] = { index: index, input: raw, errors: item_errors } if item_errors.any?
         end
 
-        errors
+        failures.values.sort_by { |f| f[:index] }
       end
     end
   end

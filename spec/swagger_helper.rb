@@ -96,6 +96,35 @@ RSpec.configure do |config|
               }
             },
             required: %w[created]
+          },
+          product_bulk_failure_item: {
+            type: :object,
+            properties: {
+              index:  { type: :integer },
+              input:  { type: :object, additionalProperties: true },
+              errors: {
+                type: :array,
+                items: {
+                  type: :object,
+                  properties: {
+                    field:   { type: :string },
+                    message: { type: :string }
+                  },
+                  required: %w[message]
+                }
+              }
+            },
+            required: %w[index input errors]
+          },
+          product_bulk_failure_response: {
+            type: :object,
+            properties: {
+              failed: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/product_bulk_failure_item" }
+              }
+            },
+            required: %w[failed]
           }
         }
       }

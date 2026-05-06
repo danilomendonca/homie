@@ -123,6 +123,8 @@ RSpec.describe "Api::V1::Products", type: :request do
         type: :object,
         properties: {
           name:                { type: :string },
+          brand:               { type: :string, nullable: true },
+          notes:               { type: :string, nullable: true },
           category_id:         { type: :string, format: :uuid, nullable: true },
           unit_type:           { type: :string, enum: %w[unit weight volume] },
           low_stock_threshold: { type: :number, nullable: true }
@@ -163,6 +165,19 @@ RSpec.describe "Api::V1::Products", type: :request do
           expect(body["brand"]).to be_nil
           expect(body["notes"]).to be_nil
           expect(body["low_stock_threshold"]).to be_nil
+        end
+      end
+
+      response "201", "creates a product with brand and notes" do
+        schema "$ref" => "#/components/schemas/product"
+        let(:payload) do
+          { name: "Coffee", unit_type: "weight", brand: "Nescafé", notes: "Decaf only" }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["brand"]).to eq("Nescafé")
+          expect(body["notes"]).to eq("Decaf only")
         end
       end
 
@@ -312,6 +327,8 @@ RSpec.describe "Api::V1::Products", type: :request do
         type: :object,
         properties: {
           name:                { type: :string, nullable: true },
+          brand:               { type: :string, nullable: true },
+          notes:               { type: :string, nullable: true },
           category_id:         { type: :string, format: :uuid, nullable: true },
           unit_type:           { type: :string, enum: %w[unit weight volume], nullable: true },
           low_stock_threshold: { type: :number, nullable: true }
@@ -570,7 +587,7 @@ RSpec.describe "Api::V1::Products", type: :request do
       end
 
       response "422", "rolls back when one item is invalid" do
-        schema "$ref" => "#/components/schemas/error_envelope"
+        schema "$ref" => "#/components/schemas/product_bulk_failure_response"
         let(:payload) do
           {
             products: [
@@ -582,15 +599,17 @@ RSpec.describe "Api::V1::Products", type: :request do
 
         run_test! do |response|
           body = JSON.parse(response.body)
-          name_errors = body["errors"].select { |e| e["field"] == "name" }
-          expect(name_errors).not_to be_empty
-          expect(name_errors.first["index"]).to eq(1)
+          expect(body["failed"].length).to eq(1)
+          failure = body["failed"].first
+          expect(failure["index"]).to eq(1)
+          expect(failure["input"]).to eq({ "unit_type" => "unit" })
+          expect(failure["errors"].map { _1["field"] }).to include("name")
           expect(Product.count).to eq(0)
         end
       end
 
       response "422", "reports errors for every invalid item, not just the first" do
-        schema "$ref" => "#/components/schemas/error_envelope"
+        schema "$ref" => "#/components/schemas/product_bulk_failure_response"
         let(:payload) do
           {
             products: [
@@ -603,14 +622,15 @@ RSpec.describe "Api::V1::Products", type: :request do
 
         run_test! do |response|
           body = JSON.parse(response.body)
-          indexes = body["errors"].map { |e| e["index"] }.uniq.sort
+          expect(body["failed"].length).to eq(2)
+          indexes = body["failed"].map { |f| f["index"] }
           expect(indexes).to eq([ 1, 2 ])
           expect(Product.count).to eq(0)
         end
       end
 
       response "422", "detects in-batch duplicate names (case-insensitive)" do
-        schema "$ref" => "#/components/schemas/error_envelope"
+        schema "$ref" => "#/components/schemas/product_bulk_failure_response"
         let(:payload) do
           {
             products: [
@@ -622,15 +642,18 @@ RSpec.describe "Api::V1::Products", type: :request do
 
         run_test! do |response|
           body = JSON.parse(response.body)
-          dup = body["errors"].find { |e| e["field"] == "name" && e["message"].include?("duplicated") }
+          expect(body["failed"].length).to eq(1)
+          failure = body["failed"].first
+          expect(failure["index"]).to eq(1)
+          expect(failure["input"]).to include("name" => "coffee")
+          dup = failure["errors"].find { |e| e["field"] == "name" && e["message"].include?("duplicated") }
           expect(dup).not_to be_nil
-          expect(dup["index"]).to eq(1)
           expect(Product.count).to eq(0)
         end
       end
 
       response "422", "rejects nonexistent category_id with the right index" do
-        schema "$ref" => "#/components/schemas/error_envelope"
+        schema "$ref" => "#/components/schemas/product_bulk_failure_response"
         let(:payload) do
           {
             products: [
@@ -642,9 +665,10 @@ RSpec.describe "Api::V1::Products", type: :request do
 
         run_test! do |response|
           body = JSON.parse(response.body)
-          err = body["errors"].find { |e| e["field"] == "category_id" }
-          expect(err).not_to be_nil
-          expect(err["index"]).to eq(1)
+          expect(body["failed"].length).to eq(1)
+          failure = body["failed"].first
+          expect(failure["index"]).to eq(1)
+          expect(failure["errors"].map { _1["field"] }).to include("category_id")
           expect(Product.count).to eq(0)
         end
       end
