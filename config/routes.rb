@@ -14,7 +14,11 @@ Rails.application.routes.draw do
           post :bulk, action: :bulk_create
         end
       end
-      resources :inventory_items
+      resources :inventory_items do
+        collection do
+          post :bulk, action: :bulk_create
+        end
+      end
     end
   end
 

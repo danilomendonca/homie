@@ -119,14 +119,85 @@ RSpec.configure do |config|
           inventory_item: {
             type: :object,
             properties: {
-              id:              { type: :string, format: :uuid },
-              product_id:      { type: :string, format: :uuid },
+              id: { type: :string, format: :uuid },
+              product: {
+                type: :object,
+                properties: {
+                  id:                  { type: :string, format: :uuid },
+                  name:                { type: :string },
+                  unit_type:           { type: :string, enum: %w[unit weight volume] },
+                  low_stock_threshold: { type: :number, nullable: true }
+                },
+                required: %w[id name unit_type low_stock_threshold]
+              },
               quantity:        { type: :number },
               expiration_date: { type: :string, format: :date, nullable: true },
               created_at:      { type: :string, format: :"date-time" },
               updated_at:      { type: :string, format: :"date-time" }
             },
-            required: %w[id product_id quantity expiration_date created_at updated_at]
+            required: %w[id product quantity expiration_date created_at updated_at]
+          },
+          inventory_item_bulk_request: {
+            type: :object,
+            properties: {
+              inventory_items: {
+                type: :array,
+                maxItems: 500,
+                items: {
+                  type: :object,
+                  properties: {
+                    product_id:      { type: :string, format: :uuid },
+                    quantity:        { type: :number },
+                    expiration_date: { type: :string, format: :date, nullable: true }
+                  },
+                  required: %w[product_id quantity]
+                }
+              }
+            },
+            required: %w[inventory_items]
+          },
+          inventory_item_bulk_response: {
+            type: :object,
+            properties: {
+              created: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/inventory_item" }
+              },
+              updated: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/inventory_item" }
+              }
+            },
+            required: %w[created updated]
+          },
+          inventory_item_bulk_failure_item: {
+            type: :object,
+            properties: {
+              index:  { type: :integer },
+              input:  { type: :object, additionalProperties: true },
+              errors: {
+                type: :array,
+                items: {
+                  type: :object,
+                  properties: {
+                    field:   { type: :string },
+                    message: { type: :string }
+                  },
+                  required: %w[message]
+                }
+              }
+            },
+            required: %w[index input errors]
+          },
+          inventory_item_bulk_failure_response: {
+            type: :object,
+            properties: {
+              failed: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/inventory_item_bulk_failure_item" }
+              }
+            },
+            required: %w[failed]
           },
           product_bulk_failure_response: {
             type: :object,
