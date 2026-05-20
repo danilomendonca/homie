@@ -116,6 +116,18 @@ RSpec.configure do |config|
             },
             required: %w[index input errors]
           },
+          inventory_item: {
+            type: :object,
+            properties: {
+              id:              { type: :string, format: :uuid },
+              product_id:      { type: :string, format: :uuid },
+              quantity:        { type: :number },
+              expiration_date: { type: :string, format: :date, nullable: true },
+              created_at:      { type: :string, format: :"date-time" },
+              updated_at:      { type: :string, format: :"date-time" }
+            },
+            required: %w[id product_id quantity expiration_date created_at updated_at]
+          },
           product_bulk_failure_response: {
             type: :object,
             properties: {
