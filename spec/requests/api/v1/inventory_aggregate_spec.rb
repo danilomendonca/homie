@@ -104,6 +104,22 @@ RSpec.describe "Api::V1::InventoryAggregate", type: :request do
         end
       end
 
+      response "200", "orders product names with pt-BR locale collation (accented chars sort with their base letter)" do
+        schema type: :array, items: { "$ref" => "#/components/schemas/inventory_aggregate_item" }
+        let(:include_empty) { "true" }
+
+        before do
+          @sabonete = create(:product, name: "Sabonete Líquido Mãos")
+          @sabao    = create(:product, name: "Sabão Líquido")
+          @sabao_coco = create(:product, name: "Sabão Líquido Côco")
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body.map { |r| r["product_id"] }).to eq([ @sabao.id, @sabao_coco.id, @sabonete.id ])
+        end
+      end
+
       response "200", "orders nested batches by expiration_date ASC NULLS LAST, created_at ASC" do
         schema type: :array, items: { "$ref" => "#/components/schemas/inventory_aggregate_item" }
         let(:include_empty) { "true" }

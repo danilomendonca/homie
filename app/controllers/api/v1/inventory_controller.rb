@@ -8,7 +8,7 @@ module Api
           .left_outer_joins(:inventory_items)
           .group("products.id")
           .select("products.*, COALESCE(SUM(inventory_items.quantity), 0) AS total_quantity")
-          .order(Arel.sql("products.name ASC"))
+          .order(Arel.sql(%(products.name COLLATE "pt-x-icu" ASC)))
 
         scope = scope.having("COALESCE(SUM(inventory_items.quantity), 0) > 0") unless include_empty
 
