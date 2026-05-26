@@ -105,6 +105,23 @@ RSpec.describe "Api::V1::InventoryLowStock", type: :request do
         end
       end
 
+      response "200", "name tiebreak uses pt-BR locale collation (accented chars sort with their base letter)" do
+        schema type: :array, items: { "$ref" => "#/components/schemas/inventory_low_stock_item" }
+
+        before do
+          @sabonete = create(:product, name: "Sabonete Líquido Mãos", low_stock_threshold: 10, unit_type: :weight)
+          create(:inventory_item, product: @sabonete, quantity: 2)
+
+          @sabao = create(:product, name: "Sabão Líquido", low_stock_threshold: 5, unit_type: :weight)
+          create(:inventory_item, product: @sabao, quantity: 1)
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body.map { |r| r["product_id"] }).to eq([ @sabao.id, @sabonete.id ])
+        end
+      end
+
       response "200", "orders nested batches by expiration_date ASC NULLS LAST, created_at ASC" do
         schema type: :array, items: { "$ref" => "#/components/schemas/inventory_low_stock_item" }
 

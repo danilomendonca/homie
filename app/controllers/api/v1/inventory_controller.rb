@@ -33,7 +33,7 @@ module Api
           .having("COALESCE(SUM(inventory_items.quantity), 0) < products.low_stock_threshold")
           .order(Arel.sql(
             "COALESCE(SUM(inventory_items.quantity), 0) / products.low_stock_threshold ASC, " \
-            "products.name ASC"
+            'products.name COLLATE "pt-x-icu" ASC'
           ))
           .to_a
 
