@@ -209,6 +209,29 @@ RSpec.configure do |config|
             },
             required: %w[failed]
           },
+          inventory_aggregate_batch: {
+            type: :object,
+            properties: {
+              id:              { type: :string, format: :uuid },
+              quantity:        { type: :number },
+              expiration_date: { type: :string, format: :date, nullable: true }
+            },
+            required: %w[id quantity expiration_date]
+          },
+          inventory_aggregate_item: {
+            type: :object,
+            properties: {
+              product_id:     { type: :string, format: :uuid },
+              product_name:   { type: :string },
+              unit_type:      { type: :string, enum: %w[unit weight volume] },
+              total_quantity: { type: :number },
+              batches: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/inventory_aggregate_batch" }
+              }
+            },
+            required: %w[product_id product_name unit_type total_quantity batches]
+          },
           inventory_low_stock_batch: {
             type: :object,
             properties: {
