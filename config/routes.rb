@@ -19,6 +19,7 @@ Rails.application.routes.draw do
           post :bulk, action: :bulk_create
         end
       end
+      get "inventory/low_stock", to: "inventory#low_stock"
     end
   end
 
