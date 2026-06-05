@@ -21,6 +21,7 @@ Rails.application.routes.draw do
       end
       get "inventory", to: "inventory#index"
       get "inventory/low_stock", to: "inventory#low_stock"
+      get "inventory/near_expiration", to: "inventory#near_expiration"
     end
   end
 

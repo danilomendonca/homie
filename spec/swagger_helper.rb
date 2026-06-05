@@ -255,6 +255,32 @@ RSpec.configure do |config|
               }
             },
             required: %w[product_id product_name unit_type total_quantity low_stock_threshold batches]
+          },
+          inventory_near_expiration_item: {
+            type: :object,
+            properties: {
+              id:              { type: :string, format: :uuid },
+              product_id:      { type: :string, format: :uuid },
+              product_name:    { type: :string },
+              unit_type:       { type: :string, enum: %w[unit weight volume] },
+              quantity:        { type: :number },
+              expiration_date: { type: :string, format: :date }
+            },
+            required: %w[id product_id product_name unit_type quantity expiration_date]
+          },
+          inventory_near_expiration_response: {
+            type: :object,
+            properties: {
+              expired: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/inventory_near_expiration_item" }
+              },
+              near_expiration: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/inventory_near_expiration_item" }
+              }
+            },
+            required: %w[expired near_expiration]
           }
         }
       }
