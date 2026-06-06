@@ -10,7 +10,7 @@ module Api
           product_name: item.product.name,
           unit_type: item.product.unit_type,
           quantity: item.quantity.to_f,
-          expiration_date: item.expiration_date&.iso8601
+          expiration_date: item.expiration_date.iso8601
         }
       end
     end
