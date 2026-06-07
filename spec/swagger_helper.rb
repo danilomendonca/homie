@@ -4,7 +4,7 @@ RSpec.configure do |config|
   config.openapi_root = Rails.root.join("swagger").to_s
 
   config.openapi_specs = {
-    "v1/swagger.json" => {
+    "openapi.json" => {
       openapi: "3.0.1",
       info: {
         title: "Homie API V1",

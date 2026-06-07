@@ -3,7 +3,6 @@ Rails.application.routes.draw do
 
   scope "/v1" do
     mount Rswag::Ui::Engine => "/docs"
-    mount Rswag::Api::Engine => "/api-docs"
   end
 
   namespace :api, path: nil do
@@ -22,6 +21,7 @@ Rails.application.routes.draw do
       get "inventory", to: "inventory#index"
       get "inventory/low_stock", to: "inventory#low_stock"
       get "inventory/near_expiration", to: "inventory#near_expiration"
+      get "openapi.json", to: "openapi#show"
     end
   end
 

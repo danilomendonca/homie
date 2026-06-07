@@ -4,7 +4,6 @@ gem "rails", "~> 8.1.3"
 gem "pg", "~> 1.5"
 gem "puma", ">= 5.0"
 
-gem "rswag-api", "~> 2.13"
 gem "rswag-ui", "~> 2.13"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
@@ -28,6 +27,7 @@ group :development, :test do
 
   gem "rspec-rails", "~> 7.1"
   gem "rswag-specs", "~> 2.13"
+  gem "committee-rails", "~> 0.7"
   gem "factory_bot_rails", "~> 6.4"
   gem "database_cleaner-active_record", "~> 2.2"
 end

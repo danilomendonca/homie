@@ -1,0 +1,1415 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Homie API V1",
+    "version": "v1"
+  },
+  "paths": {
+    "/v1/categories": {
+      "get": {
+        "summary": "Lists categories ordered by name ASC",
+        "tags": [
+          "Categories"
+        ],
+        "responses": {
+          "200": {
+            "description": "lists categories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/category"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Creates a category",
+        "tags": [
+          "Categories"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "creates a category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/category"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects an empty body (presence violation)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/categories/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "format": "uuid",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Shows a category",
+        "tags": [
+          "Categories"
+        ],
+        "responses": {
+          "200": {
+            "description": "returns the category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/category"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "returns 404 when not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Updates a category",
+        "tags": [
+          "Categories"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "updates the name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/category"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects null name (Merge Patch on non-nullable field)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deletes a category",
+        "tags": [
+          "Categories"
+        ],
+        "responses": {
+          "204": {
+            "description": "deletes the category"
+          },
+          "404": {
+            "description": "returns 404 for unknown id"
+          }
+        }
+      }
+    },
+    "/v1/inventory": {
+      "get": {
+        "summary": "Lists products with aggregated stock and nested batches",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "name": "include_empty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "avoids N+1: query count is bounded regardless of product count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/inventory_aggregate_item"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inventory_items": {
+      "get": {
+        "summary": "Lists inventory items",
+        "tags": [
+          "InventoryItems"
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "low_stock",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "?low_stock=false is treated as absent (no filter applied)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/inventory_item"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Creates an inventory item",
+        "tags": [
+          "InventoryItems"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "coerces JSON string quantity via numericality",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects fractional quantity for unit_type=unit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "quantity": {
+                    "type": "number"
+                  },
+                  "expiration_date": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "product_id",
+                  "quantity"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inventory_items/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "format": "uuid",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Shows an inventory item",
+        "tags": [
+          "InventoryItems"
+        ],
+        "responses": {
+          "200": {
+            "description": "returns the item",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "returns 404 when not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Updates an inventory item",
+        "tags": [
+          "InventoryItems"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "sending same product_id is a no-op",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects fractional quantity on unit_type=unit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "expiration_date": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deletes an inventory item",
+        "tags": [
+          "InventoryItems"
+        ],
+        "responses": {
+          "204": {
+            "description": "deletes an active-stock item (no 409 path here)"
+          },
+          "404": {
+            "description": "returns 404 for unknown id"
+          }
+        }
+      }
+    },
+    "/v1/inventory_items/bulk": {
+      "post": {
+        "summary": "Bulk creates or merges inventory items by (product_id, expiration_date)",
+        "tags": [
+          "InventoryItems"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "allows past expiration_date when merging into a matching existing batch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item_bulk_response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "shape-fails on missing quantity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item_bulk_failure_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects inventory_items array exceeding the limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/inventory_item_bulk_request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inventory/low_stock": {
+      "get": {
+        "summary": "Lists products grouped under their low-stock threshold",
+        "tags": [
+          "Inventory"
+        ],
+        "responses": {
+          "200": {
+            "description": "response shape has the six required keys per row and the three required keys per batch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/inventory_low_stock_item"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inventory/near_expiration": {
+      "get": {
+        "summary": "Lists inventory items that are expired or expiring within N days",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "avoids N+1: query count is bounded regardless of item count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_near_expiration_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects a present-but-blank days value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/products": {
+      "get": {
+        "summary": "Lists products",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "search matches brand as well as name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/product"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Creates a product",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "accepts fractional low_stock_threshold for unit_type=weight",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects negative low_stock_threshold",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "brand": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "notes": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "category_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "unit_type": {
+                    "type": "string",
+                    "enum": [
+                      "unit",
+                      "weight",
+                      "volume"
+                    ]
+                  },
+                  "low_stock_threshold": {
+                    "type": "number",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "name",
+                  "unit_type"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/products/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "format": "uuid",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Shows a product",
+        "tags": [
+          "Products"
+        ],
+        "responses": {
+          "200": {
+            "description": "returns the product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "returns 404 when not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Updates a product",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "accepts unit_type and fractional threshold change together",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects fractional low_stock_threshold on unit_type=unit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "rejects unit_type change when inventory items exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "brand": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "notes": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "category_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "unit_type": {
+                    "type": "string",
+                    "enum": [
+                      "unit",
+                      "weight",
+                      "volume"
+                    ],
+                    "nullable": true
+                  },
+                  "low_stock_threshold": {
+                    "type": "number",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deletes a product",
+        "tags": [
+          "Products"
+        ],
+        "responses": {
+          "204": {
+            "description": "deletes a product with zero-quantity batches (cascade)"
+          },
+          "409": {
+            "description": "rejects delete when active stock exists"
+          },
+          "404": {
+            "description": "returns 404 for unknown id"
+          }
+        }
+      }
+    },
+    "/v1/products/bulk": {
+      "post": {
+        "summary": "Bulk-creates products",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "accepts an empty products array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product_bulk_response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects nonexistent category_id with the right index",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product_bulk_failure_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects when products is not an array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/product_bulk_request"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "error_object": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "error_envelope": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/error_object"
+            }
+          }
+        },
+        "required": [
+          "errors"
+        ]
+      },
+      "category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "product": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "unit_type": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "weight",
+              "volume"
+            ]
+          },
+          "low_stock_threshold": {
+            "type": "number",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "brand",
+          "notes",
+          "category",
+          "unit_type",
+          "low_stock_threshold",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "product_bulk_request": {
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "brand": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "notes": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "category_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "nullable": true
+                },
+                "unit_type": {
+                  "type": "string",
+                  "enum": [
+                    "unit",
+                    "weight",
+                    "volume"
+                  ]
+                },
+                "low_stock_threshold": {
+                  "type": "number",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "name",
+                "unit_type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "products"
+        ]
+      },
+      "product_bulk_response": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/product"
+            }
+          }
+        },
+        "required": [
+          "created"
+        ]
+      },
+      "product_bulk_failure_item": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "index",
+          "input",
+          "errors"
+        ]
+      },
+      "inventory_item": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "unit_type": {
+                "type": "string",
+                "enum": [
+                  "unit",
+                  "weight",
+                  "volume"
+                ]
+              },
+              "low_stock_threshold": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "unit_type",
+              "low_stock_threshold"
+            ]
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "expiration_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "product",
+          "quantity",
+          "expiration_date",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "inventory_item_bulk_request": {
+        "type": "object",
+        "properties": {
+          "inventory_items": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "product_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "quantity": {
+                  "type": "number"
+                },
+                "expiration_date": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "product_id",
+                "quantity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "inventory_items"
+        ]
+      },
+      "inventory_item_bulk_response": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_item"
+            }
+          },
+          "updated": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_item"
+            }
+          }
+        },
+        "required": [
+          "created",
+          "updated"
+        ]
+      },
+      "inventory_item_bulk_failure_item": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "index",
+          "input",
+          "errors"
+        ]
+      },
+      "inventory_item_bulk_failure_response": {
+        "type": "object",
+        "properties": {
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_item_bulk_failure_item"
+            }
+          }
+        },
+        "required": [
+          "failed"
+        ]
+      },
+      "product_bulk_failure_response": {
+        "type": "object",
+        "properties": {
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/product_bulk_failure_item"
+            }
+          }
+        },
+        "required": [
+          "failed"
+        ]
+      },
+      "inventory_aggregate_batch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "expiration_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "quantity",
+          "expiration_date"
+        ]
+      },
+      "inventory_aggregate_item": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "unit_type": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "weight",
+              "volume"
+            ]
+          },
+          "total_quantity": {
+            "type": "number"
+          },
+          "batches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_aggregate_batch"
+            }
+          }
+        },
+        "required": [
+          "product_id",
+          "product_name",
+          "unit_type",
+          "total_quantity",
+          "batches"
+        ]
+      },
+      "inventory_low_stock_batch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "expiration_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "quantity",
+          "expiration_date"
+        ]
+      },
+      "inventory_low_stock_item": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "unit_type": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "weight",
+              "volume"
+            ]
+          },
+          "total_quantity": {
+            "type": "number"
+          },
+          "low_stock_threshold": {
+            "type": "number"
+          },
+          "batches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_low_stock_batch"
+            }
+          }
+        },
+        "required": [
+          "product_id",
+          "product_name",
+          "unit_type",
+          "total_quantity",
+          "low_stock_threshold",
+          "batches"
+        ]
+      },
+      "inventory_near_expiration_item": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "unit_type": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "weight",
+              "volume"
+            ]
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "expiration_date": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "product_id",
+          "product_name",
+          "unit_type",
+          "quantity",
+          "expiration_date"
+        ]
+      },
+      "inventory_near_expiration_response": {
+        "type": "object",
+        "properties": {
+          "expired": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_near_expiration_item"
+            }
+          },
+          "near_expiration": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_near_expiration_item"
+            }
+          }
+        },
+        "required": [
+          "expired",
+          "near_expiration"
+        ]
+      }
+    }
+  }
+}
