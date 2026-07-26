@@ -14,6 +14,11 @@ Rails.application.routes.draw do
           get :search
         end
       end
+      resources :product_aliases do
+        collection do
+          get :lookup
+        end
+      end
       resources :inventory_items do
         collection do
           post :bulk, action: :bulk_create

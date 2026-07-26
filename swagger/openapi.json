@@ -581,6 +581,270 @@
         }
       }
     },
+    "/v1/product_aliases": {
+      "get": {
+        "summary": "Lists product aliases ordered by abbreviation ASC (pt-BR collation)",
+        "tags": [
+          "Product aliases"
+        ],
+        "parameters": [
+          {
+            "name": "store_name",
+            "in": "query",
+            "required": false,
+            "description": "Exact (case-insensitive) store filter. This lists that store's own aliases only — it does not include the wildcard (store_name: null) aliases the store inherits. Use GET /v1/product_aliases/lookup for the precedence-aware read.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "sorts abbreviations with the pt-BR ICU collation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/product_alias"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Creates a product alias",
+        "tags": [
+          "Product aliases"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "accepts the same abbreviation under two different stores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product_alias"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects a malformed product_id without raising a 500",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "abbreviation": {
+                    "type": "string"
+                  },
+                  "store_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "product_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "abbreviation",
+                  "product_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/product_aliases/lookup": {
+      "get": {
+        "summary": "Resolves a store abbreviation to a product (store-specific beats wildcard)",
+        "tags": [
+          "Product aliases"
+        ],
+        "parameters": [
+          {
+            "name": "abbreviation",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "store_name",
+            "in": "query",
+            "required": false,
+            "description": "When given, a store-specific alias wins over the wildcard (store_name: null) alias for the same abbreviation. When omitted or blank, only the wildcard tier is considered.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "treats a blank store_name as the wildcard lookup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product_alias"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "returns 404 when nothing matches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects a blank abbreviation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/product_aliases/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "format": "uuid",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Shows a product alias",
+        "tags": [
+          "Product aliases"
+        ],
+        "responses": {
+          "200": {
+            "description": "returns the alias",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product_alias"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "returns 404 for unknown id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Updates a product alias",
+        "tags": [
+          "Product aliases"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "promotes a store alias to the wildcard tier with store_name: null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product_alias"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rejects an update into an existing (abbreviation, store_name) pair",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "abbreviation": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "store_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "product_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deletes a product alias",
+        "tags": [
+          "Product aliases"
+        ],
+        "responses": {
+          "204": {
+            "description": "deletes the alias"
+          },
+          "404": {
+            "description": "returns 404 for unknown id"
+          }
+        }
+      }
+    },
     "/v1/products/search": {
       "get": {
         "summary": "Fuzzy-searches products by name and brand",
@@ -877,7 +1141,7 @@
         ],
         "responses": {
           "204": {
-            "description": "deletes a product with zero-quantity batches (cascade)"
+            "description": "deletes a product with aliases, taking the aliases with it"
           },
           "409": {
             "description": "rejects delete when active stock exists"
@@ -1062,6 +1326,41 @@
           "category",
           "unit_type",
           "low_stock_threshold",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "product_alias": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "abbreviation": {
+            "type": "string"
+          },
+          "store_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "product": {
+            "$ref": "#/components/schemas/product"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "abbreviation",
+          "store_name",
+          "product",
           "created_at",
           "updated_at"
         ]

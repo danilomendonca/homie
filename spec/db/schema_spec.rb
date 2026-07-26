@@ -72,5 +72,29 @@ RSpec.describe "Database schema (PRD §10, §13 invariants)" do
 
     expect(conn.columns(:categories).find { |c| c.name == "name" }.sql_type).to eq("citext")
     expect(conn.columns(:products).find { |c| c.name == "name" }.sql_type).to eq("citext")
+
+    expect(conn.columns(:product_aliases).find { |c| c.name == "abbreviation" }.sql_type).to eq("citext")
+    expect(conn.columns(:product_aliases).find { |c| c.name == "store_name" }.sql_type).to eq("citext")
+  end
+
+  it "makes the wildcard store_name a single slot per abbreviation" do
+    # pg_indexes rather than conn.indexes: NULLS NOT DISTINCT is the assertion, not
+    # merely that the pair is unique. Without the clause Postgres treats every NULL
+    # store_name as distinct and product_aliases#lookup stops being deterministic.
+    defs = conn.execute(<<~SQL).to_a.map { |r| r["indexdef"] }
+      SELECT indexdef FROM pg_indexes WHERE tablename = 'product_aliases'
+    SQL
+
+    expect(defs).to include(
+      a_string_matching(/UNIQUE INDEX .* \(abbreviation, store_name\) NULLS NOT DISTINCT/)
+    )
+  end
+
+  it "cascades the product_aliases foreign key" do
+    # An alias is meaningless without its product, and deliberately does not join
+    # the Phase 3 delete-conflict rule — only active stock blocks a product delete.
+    fk = conn.foreign_keys(:product_aliases).find { |f| f.column == "product_id" }
+    expect(fk.to_table).to eq("products")
+    expect(fk.on_delete).to eq(:cascade)
   end
 end

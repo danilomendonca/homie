@@ -533,6 +533,22 @@ RSpec.describe "Api::V1::Products", type: :request do
         end
       end
 
+      response "204", "deletes a product with aliases, taking the aliases with it" do
+        let(:product) { create(:product) }
+        let(:id) { product.id }
+
+        before do
+          create(:product_alias, product: product, abbreviation: "REFRIG COCA 2L")
+          create(:product_alias, product: product, abbreviation: "REFRIG COCA 2L", store_name: "Oba")
+        end
+
+        run_test! do
+          # Aliases are not a delete-conflict tier alongside the active-stock rule.
+          expect(Product.exists?(id)).to be(false)
+          expect(ProductAlias.where(product_id: id).count).to eq(0)
+        end
+      end
+
       response "409", "rejects delete when active stock exists" do
         schema "$ref" => "#/components/schemas/error_envelope"
         let(:product) { create(:product) }

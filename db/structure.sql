@@ -132,6 +132,20 @@ CREATE TABLE public.inventory_items (
 
 
 --
+-- Name: product_aliases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_aliases (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    abbreviation public.citext NOT NULL,
+    store_name public.citext,
+    product_id uuid NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: products; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -183,6 +197,14 @@ ALTER TABLE ONLY public.inventory_items
 
 
 --
+-- Name: product_aliases product_aliases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_aliases
+    ADD CONSTRAINT product_aliases_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -227,6 +249,20 @@ CREATE INDEX index_inventory_items_on_product_id_active_stock ON public.inventor
 
 
 --
+-- Name: index_product_aliases_on_abbreviation_and_store_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_product_aliases_on_abbreviation_and_store_name ON public.product_aliases USING btree (abbreviation, store_name) NULLS NOT DISTINCT;
+
+
+--
+-- Name: index_product_aliases_on_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_product_aliases_on_product_id ON public.product_aliases USING btree (product_id);
+
+
+--
 -- Name: index_products_on_brand_trgm; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -255,6 +291,14 @@ CREATE INDEX index_products_on_name_trgm ON public.products USING gin (public.im
 
 
 --
+-- Name: product_aliases fk_rails_11f90f487b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_aliases
+    ADD CONSTRAINT fk_rails_11f90f487b FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
 -- Name: inventory_items fk_rails_62d92932b7; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -277,6 +321,7 @@ ALTER TABLE ONLY public.products
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260726130000'),
 ('20260726120001'),
 ('20260726120000'),
 ('20260505085915'),

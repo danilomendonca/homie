@@ -3,6 +3,7 @@ class Product < ApplicationRecord
 
   belongs_to :category, optional: true
   has_many :inventory_items, dependent: :destroy
+  has_many :product_aliases, dependent: :destroy
 
   validates :name, presence: true, uniqueness: true
   validates :unit_type, presence: true

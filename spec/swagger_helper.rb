@@ -65,6 +65,18 @@ RSpec.configure do |config|
             },
             required: %w[id name brand notes category unit_type low_stock_threshold created_at updated_at]
           },
+          product_alias: {
+            type: :object,
+            properties: {
+              id:           { type: :string, format: :uuid },
+              abbreviation: { type: :string },
+              store_name:   { type: :string, nullable: true },
+              product:      { "$ref" => "#/components/schemas/product" },
+              created_at:   { type: :string, format: :"date-time" },
+              updated_at:   { type: :string, format: :"date-time" }
+            },
+            required: %w[id abbreviation store_name product created_at updated_at]
+          },
           product_search_result: {
             type: :object,
             properties: {

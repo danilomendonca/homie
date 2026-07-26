@@ -31,6 +31,19 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     assert_response_schema_confirm(200)
   end
 
+  it "GET /v1/product_aliases" do
+    create(:product_alias, product: create(:product, name: "Refrigerante Cola 2L", unit_type: :volume))
+    get "/v1/product_aliases"
+    assert_response_schema_confirm(200)
+  end
+
+  it "GET /v1/product_aliases/lookup" do
+    create(:product_alias, abbreviation: "REFRIG COCA 2L", store_name: "Oba",
+      product: create(:product, name: "Refrigerante Cola 2L", unit_type: :volume))
+    get "/v1/product_aliases/lookup", params: { abbreviation: "refrig coca 2l", store_name: "Oba" }
+    assert_response_schema_confirm(200)
+  end
+
   it "DELETE /v1/inventory_items" do
     create(:inventory_item, product: create(:product, name: "Milk", unit_type: :volume))
     delete "/v1/inventory_items", params: { confirm: "true" }
@@ -71,7 +84,8 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     expect(doc["openapi"]).to match(/\A3\./)
     expect(doc["paths"]).to include(
       "/v1/categories", "/v1/products", "/v1/products/search", "/v1/inventory_items",
-      "/v1/inventory", "/v1/inventory/low_stock", "/v1/inventory/near_expiration"
+      "/v1/inventory", "/v1/inventory/low_stock", "/v1/inventory/near_expiration",
+      "/v1/product_aliases", "/v1/product_aliases/lookup"
     )
   end
 end

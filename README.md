@@ -70,6 +70,8 @@ Endpoints:
 | CRUD | `/v1/categories` | Categories |
 | CRUD | `/v1/products`, `POST /v1/products/bulk` | Products (+ bulk create) |
 | GET | `/v1/products/search` | Fuzzy (trigram) match on name **and** brand — `?q=` required, `?min_similarity=` (default 0.3), `?limit=` (default 20, max 100). Returns `similarity`, `name_similarity`, `brand_similarity` per hit |
+| CRUD | `/v1/product_aliases` | Learned store-abbreviation → product map. `?store_name=` and `?product_id=` filter `index` (the store filter is exact — it does not include inherited wildcards). `store_name: null` is the wildcard tier that applies to every store; `(abbreviation, store_name)` is unique case-insensitively, wildcard included |
+| GET | `/v1/product_aliases/lookup` | Exact (case-insensitive) resolution of one abbreviation — `?abbreviation=` required, `?store_name=` optional. A store-specific alias beats the wildcard; 404 when nothing matches. No fuzzy fallback — that is `/v1/products/search` |
 | CRUD | `/v1/inventory_items`, `POST /v1/inventory_items/bulk` | Inventory batches (+ bulk upsert) |
 | DELETE | `/v1/inventory_items` | Bulk reset — requires `?confirm=true`, optional `?product_id=` to scope; returns `{ "deleted": N }` |
 | GET | `/v1/inventory` | Aggregated stock per product (`?include_empty=true` to include zero-quantity) |
