@@ -25,6 +25,18 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     assert_response_schema_confirm(200)
   end
 
+  it "GET /v1/products/search" do
+    create(:product, name: "Tostata Tradicional", brand: "Visconti", unit_type: :unit)
+    get "/v1/products/search", params: { q: "TORRADA VISCONTI" }
+    assert_response_schema_confirm(200)
+  end
+
+  it "DELETE /v1/inventory_items" do
+    create(:inventory_item, product: create(:product, name: "Milk", unit_type: :volume))
+    delete "/v1/inventory_items", params: { confirm: "true" }
+    assert_response_schema_confirm(200)
+  end
+
   it "GET /v1/inventory_items" do
     create(:inventory_item, product: create(:product, name: "Milk", unit_type: :volume))
     get "/v1/inventory_items"
@@ -58,7 +70,7 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     doc = JSON.parse(response.body)
     expect(doc["openapi"]).to match(/\A3\./)
     expect(doc["paths"]).to include(
-      "/v1/categories", "/v1/products", "/v1/inventory_items",
+      "/v1/categories", "/v1/products", "/v1/products/search", "/v1/inventory_items",
       "/v1/inventory", "/v1/inventory/low_stock", "/v1/inventory/near_expiration"
     )
   end

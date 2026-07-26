@@ -25,6 +25,20 @@ COMMENT ON EXTENSION citext IS 'data type for case-insensitive character strings
 
 
 --
+-- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pg_trgm; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
+
+
+--
 -- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
 --
 
@@ -39,6 +53,20 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
+-- Name: unaccent; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION unaccent; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION unaccent IS 'text search dictionary that removes accents';
+
+
+--
 -- Name: unit_type; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -47,6 +75,17 @@ CREATE TYPE public.unit_type AS ENUM (
     'weight',
     'volume'
 );
+
+
+--
+-- Name: immutable_unaccent(text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.immutable_unaccent(text) RETURNS text
+    LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
+    AS $_$
+  SELECT public.unaccent('public.unaccent'::regdictionary, $1)
+$_$;
 
 
 SET default_tablespace = '';
@@ -188,6 +227,13 @@ CREATE INDEX index_inventory_items_on_product_id_active_stock ON public.inventor
 
 
 --
+-- Name: index_products_on_brand_trgm; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_products_on_brand_trgm ON public.products USING gin (public.immutable_unaccent((brand)::text) public.gin_trgm_ops);
+
+
+--
 -- Name: index_products_on_category_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -199,6 +245,13 @@ CREATE INDEX index_products_on_category_id ON public.products USING btree (categ
 --
 
 CREATE UNIQUE INDEX index_products_on_name ON public.products USING btree (name);
+
+
+--
+-- Name: index_products_on_name_trgm; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_products_on_name_trgm ON public.products USING gin (public.immutable_unaccent((name)::text) public.gin_trgm_ops);
 
 
 --
@@ -224,6 +277,8 @@ ALTER TABLE ONLY public.products
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260726120001'),
+('20260726120000'),
 ('20260505085915'),
 ('20260503012002'),
 ('20260503012001'),

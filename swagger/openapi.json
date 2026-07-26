@@ -301,6 +301,62 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Deletes inventory items in bulk",
+        "tags": [
+          "InventoryItems"
+        ],
+        "parameters": [
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "scopes the wipe to product_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_reset_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects a truthy-looking confirm that is not exactly \"true\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rejects an unknown product_id and deletes nothing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/inventory_items/{id}": {
@@ -514,6 +570,62 @@
           },
           "400": {
             "description": "rejects a present-but-blank days value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/products/search": {
+      "get": {
+        "summary": "Fuzzy-searches products by name and brand",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "min_similarity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "reports brand_similarity 0.0 rather than null for a product with no brand",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/product_search_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects a decimal limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -952,6 +1064,54 @@
           "low_stock_threshold",
           "created_at",
           "updated_at"
+        ]
+      },
+      "product_search_result": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "$ref": "#/components/schemas/product"
+          },
+          "similarity": {
+            "type": "number"
+          },
+          "name_similarity": {
+            "type": "number"
+          },
+          "brand_similarity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "product",
+          "similarity",
+          "name_similarity",
+          "brand_similarity"
+        ]
+      },
+      "product_search_response": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/product_search_result"
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "inventory_reset_response": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
         ]
       },
       "product_bulk_request": {

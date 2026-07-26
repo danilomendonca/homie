@@ -38,6 +38,25 @@ module Api
         head :no_content
       end
 
+      # Bulk reset. The confirm guard is the only protection available — the API is
+      # unauthenticated by design (PRD §3) and this is the one call that can empty
+      # the whole inventory, so the parse is strict rather than lenient.
+      def destroy_all
+        unless params[:confirm] == "true"
+          raise ActionController::BadRequest,
+            "missing or invalid `confirm` parameter: pass confirm=true to delete inventory items"
+        end
+
+        scope = InventoryItem.all
+        if params[:product_id].present?
+          scope = scope.where(product_id: Product.find(params[:product_id]).id)
+        end
+
+        # delete_all, not destroy_all: InventoryItem has no callbacks and no
+        # dependent associations, so one DELETE statement is sufficient.
+        render json: { deleted: scope.delete_all }
+      end
+
       # Additive bulk: groups inputs by (product_id, expiration_date) and either
       # merges into the oldest matching existing batch (update-context validators)
       # or creates a new batch (create-context validators, including past-date rule).

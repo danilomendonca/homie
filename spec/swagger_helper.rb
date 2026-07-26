@@ -65,6 +65,31 @@ RSpec.configure do |config|
             },
             required: %w[id name brand notes category unit_type low_stock_threshold created_at updated_at]
           },
+          product_search_result: {
+            type: :object,
+            properties: {
+              product:          { "$ref" => "#/components/schemas/product" },
+              similarity:       { type: :number },
+              name_similarity:  { type: :number },
+              brand_similarity: { type: :number }
+            },
+            required: %w[product similarity name_similarity brand_similarity]
+          },
+          product_search_response: {
+            type: :object,
+            properties: {
+              results: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/product_search_result" }
+              }
+            },
+            required: %w[results]
+          },
+          inventory_reset_response: {
+            type: :object,
+            properties: { deleted: { type: :integer } },
+            required: %w[deleted]
+          },
           product_bulk_request: {
             type: :object,
             properties: {

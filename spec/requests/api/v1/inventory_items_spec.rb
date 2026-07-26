@@ -369,6 +369,134 @@ RSpec.describe "Api::V1::InventoryItems", type: :request do
         end
       end
     end
+
+    delete "Deletes inventory items in bulk" do
+      tags "InventoryItems"
+      produces "application/json"
+      parameter name: :confirm, in: :query, type: :string, required: true
+      parameter name: :product_id, in: :query, type: :string, required: false
+
+      # NOTE: defining a `let` makes rswag send `<param>=<value>` (even when
+      # nil → `<param>=`). Tests for an *absent* param therefore omit the let.
+
+      response "200", "wipes every batch when confirm=true" do
+        schema "$ref" => "#/components/schemas/inventory_reset_response"
+        let(:confirm) { "true" }
+
+        before do
+          @product_a = create(:product)
+          @product_b = create(:product)
+          create(:inventory_item, product: @product_a)
+          create(:inventory_item, product: @product_a, expiration_date: Date.current + 5)
+          create(:inventory_item, product: @product_b)
+        end
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)).to eq({ "deleted" => 3 })
+          expect(InventoryItem.count).to eq(0)
+          expect(Product.count).to eq(2)
+        end
+      end
+
+      response "200", "reports zero on an already-empty inventory" do
+        schema "$ref" => "#/components/schemas/inventory_reset_response"
+        let(:confirm) { "true" }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)).to eq({ "deleted" => 0 })
+        end
+      end
+
+      response "200", "scopes the wipe to product_id" do
+        schema "$ref" => "#/components/schemas/inventory_reset_response"
+        let(:confirm) { "true" }
+        let(:product_id) { @product_a.id }
+
+        before do
+          @product_a = create(:product)
+          @product_b = create(:product)
+          create(:inventory_item, product: @product_a)
+          create(:inventory_item, product: @product_a, expiration_date: Date.current + 5)
+          @kept = create(:inventory_item, product: @product_b)
+        end
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)).to eq({ "deleted" => 2 })
+          expect(InventoryItem.pluck(:id)).to eq([ @kept.id ])
+        end
+      end
+
+      response "400", "rejects confirm=false" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:confirm) { "false" }
+
+        before { create(:inventory_item) }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["errors"]).to be_present
+          expect(InventoryItem.count).to eq(1)
+        end
+      end
+
+      response "400", "rejects a truthy-looking confirm that is not exactly \"true\"" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:confirm) { "maybe" }
+
+        before { create(:inventory_item) }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["errors"]).to be_present
+          expect(InventoryItem.count).to eq(1)
+        end
+      end
+
+      response "404", "rejects an unknown product_id and deletes nothing" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:confirm) { "true" }
+        let(:product_id) { SecureRandom.uuid }
+
+        before { create(:inventory_item) }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["errors"].first["message"]).to eq("Product not found")
+          expect(InventoryItem.count).to eq(1)
+        end
+      end
+    end
+  end
+
+  # rswag insists on a `let` for a required parameter, so the truly-absent
+  # `confirm` case cannot be expressed as a `response` block — the 400 is already
+  # documented by the confirm=false block above.
+  it "rejects a missing confirm with the §11 error envelope and deletes nothing" do
+    create(:inventory_item)
+
+    delete "/v1/inventory_items"
+
+    expect(response).to have_http_status(:bad_request)
+    body = JSON.parse(response.body)
+    expect(body["errors"].first["message"]).to match(/pass confirm=true to delete inventory items/)
+    expect(InventoryItem.count).to eq(1)
+  end
+
+  # Cross-resource: DELETE /v1/products/:id is blocked by Api::Conflict while any
+  # batch has quantity > 0, so the reset is what unblocks pruning the catalogue.
+  describe "resetting inventory unblocks product deletion" do
+    it "turns a 409 into a 204" do
+      product = create(:product)
+      create(:inventory_item, product: product, quantity: 5)
+
+      delete "/v1/products/#{product.id}"
+      expect(response).to have_http_status(:conflict)
+
+      delete "/v1/inventory_items", params: { confirm: "true" }
+      expect(response).to have_http_status(:ok)
+
+      delete "/v1/products/#{product.id}"
+      expect(response).to have_http_status(:no_content)
+      expect(Product.exists?(product.id)).to be(false)
+    end
   end
 
   path "/v1/inventory_items/{id}" do

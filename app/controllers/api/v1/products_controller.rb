@@ -3,6 +3,40 @@ module Api
     class ProductsController < BaseController
       BULK_LIMIT = 500
 
+      SEARCH_DEFAULT_MIN_SIMILARITY = 0.3
+      SEARCH_DEFAULT_LIMIT = 20
+      SEARCH_MAX_LIMIT = 100
+
+      # Neither similarity function dominates: similarity() wins for whole-string
+      # queries, strict_word_similarity() wins when the query embeds the catalogue
+      # term in receipt noise ("REFRIG COCA COLA 2L PET"). GREATEST captures both
+      # without inventing weights, and both are bounded [0,1].
+      NAME_SCORE_SQL = <<~SQL.squish.freeze
+        GREATEST(
+          similarity(immutable_unaccent(products.name::text), immutable_unaccent(:q)),
+          strict_word_similarity(immutable_unaccent(products.name::text), immutable_unaccent(:q))
+        )
+      SQL
+
+      # COALESCE on brand only: brand is nullable and similarity(NULL, …) is NULL,
+      # which GREATEST would ignore but the serializer would not. name is NOT NULL.
+      BRAND_SCORE_SQL = <<~SQL.squish.freeze
+        COALESCE(GREATEST(
+          similarity(immutable_unaccent(products.brand::text), immutable_unaccent(:q)),
+          strict_word_similarity(immutable_unaccent(products.brand::text), immutable_unaccent(:q))
+        ), 0)
+      SQL
+
+      SCORE_SQL = "GREATEST(#{NAME_SCORE_SQL}, #{BRAND_SCORE_SQL})".freeze
+
+      # match_similarity puts brand-only hits in play; name_similarity breaks the
+      # ties between variants of one brand (every Coca-Cola product scores 1.0 on
+      # brand); the pt-BR ICU collation is the stable final tiebreak this codebase
+      # requires of any ordering by products.name.
+      SEARCH_ORDER_SQL = <<~SQL.squish.freeze
+        match_similarity DESC, name_similarity DESC, products.name COLLATE "pt-x-icu" ASC
+      SQL
+
       before_action :set_product, only: %i[show update destroy]
 
       def index
@@ -15,6 +49,35 @@ module Api
         products = products.order(name: :asc)
 
         render json: products.map { |p| ProductSerializer.serialize(p) }
+      end
+
+      # Trigram search over accent-stripped name and brand. Index usage is knowingly
+      # deferred: the similarity() >= :min form cannot use the GIN indexes (only the
+      # % operator can), and a seq scan is the right plan at catalogue scale. When it
+      # is not, add an index-eligible pre-filter —
+      #   immutable_unaccent(name::text) % immutable_unaccent(:q) OR … brand …
+      # with SET LOCAL pg_trgm.similarity_threshold inside the request transaction.
+      def search
+        query = params[:q].to_s
+        if query.strip.empty?
+          raise ActionController::BadRequest, "missing or blank required query parameter `q`"
+        end
+
+        min_similarity = parse_min_similarity(params[:min_similarity])
+        limit = parse_limit(params[:limit])
+
+        products = Product
+          .includes(:category)
+          .select(Product.sanitize_sql_array([
+            "products.*, #{NAME_SCORE_SQL} AS name_similarity, " \
+            "#{BRAND_SCORE_SQL} AS brand_similarity, #{SCORE_SQL} AS match_similarity",
+            { q: query }
+          ]))
+          .where(Product.sanitize_sql_array([ "#{SCORE_SQL} >= :min", { q: query, min: min_similarity } ]))
+          .order(Arel.sql(SEARCH_ORDER_SQL))
+          .limit(limit)
+
+        render json: { results: products.map { |p| ProductSearchSerializer.serialize(p) } }
       end
 
       def show
@@ -85,6 +148,32 @@ module Api
 
       def product_params
         params.permit(:name, :brand, :notes, :category_id, :unit_type, :low_stock_threshold)
+      end
+
+      # Regex-then-range, as in InventoryController#parse_days: to_f/to_i on garbage
+      # would silently yield 0.
+      def parse_min_similarity(raw)
+        return SEARCH_DEFAULT_MIN_SIMILARITY if raw.nil?
+
+        unless raw.match?(/\A\d*\.?\d+\z/) && raw.to_f > 0 && raw.to_f <= 1
+          raise ActionController::BadRequest,
+            "invalid value for query parameter `min_similarity`: " \
+            "must be a number greater than 0 and at most 1"
+        end
+
+        raw.to_f
+      end
+
+      def parse_limit(raw)
+        return SEARCH_DEFAULT_LIMIT if raw.nil?
+
+        unless raw.match?(/\A\d+\z/) && (1..SEARCH_MAX_LIMIT).cover?(raw.to_i)
+          raise ActionController::BadRequest,
+            "invalid value for query parameter `limit`: " \
+            "must be an integer between 1 and #{SEARCH_MAX_LIMIT}"
+        end
+
+        raw.to_i
       end
 
       def collect_bulk_failures(prepared)

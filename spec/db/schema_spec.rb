@@ -7,6 +7,40 @@ RSpec.describe "Database schema (PRD §10, §13 invariants)" do
     expect(conn.extensions).to include("citext")
   end
 
+  it "loads the trigram search extensions" do
+    expect(conn.extensions).to include("pg_trgm", "unaccent")
+  end
+
+  it "defines immutable_unaccent as an IMMUTABLE function" do
+    result = conn.execute(<<~SQL).to_a
+      SELECT provolatile
+      FROM pg_proc
+      JOIN pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+      WHERE proname = 'immutable_unaccent' AND nspname = 'public'
+    SQL
+
+    # A STABLE redefinition would silently break both GIN indexes below, so the
+    # volatility is the assertion — not merely that the function exists.
+    expect(result.map { |r| r["provolatile"] }).to eq([ "i" ])
+  end
+
+  it "has the two trigram GIN indexes on products" do
+    # pg_indexes rather than conn.indexes(:products): Rails reports expression
+    # indexes as opaque strings whose rendering varies by adapter version.
+    defs = conn.execute(<<~SQL).to_a.map { |r| r["indexdef"] }
+      SELECT indexdef FROM pg_indexes WHERE tablename = 'products'
+    SQL
+
+    # The schema qualifier is present or absent depending on search_path, so it is
+    # optional in the match.
+    expect(defs).to include(
+      a_string_matching(/USING gin \((?:public\.)?immutable_unaccent\(\(name\)::text\) (?:public\.)?gin_trgm_ops\)/)
+    )
+    expect(defs).to include(
+      a_string_matching(/USING gin \((?:public\.)?immutable_unaccent\(\(brand\)::text\) (?:public\.)?gin_trgm_ops\)/)
+    )
+  end
+
   it "defines the unit_type enum with the three documented values" do
     result = conn.execute(<<~SQL).to_a
       SELECT enumlabel

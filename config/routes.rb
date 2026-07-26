@@ -11,6 +11,7 @@ Rails.application.routes.draw do
       resources :products do
         collection do
           post :bulk, action: :bulk_create
+          get :search
         end
       end
       resources :inventory_items do
@@ -18,6 +19,7 @@ Rails.application.routes.draw do
           post :bulk, action: :bulk_create
         end
       end
+      delete "inventory_items", to: "inventory_items#destroy_all"
       get "inventory", to: "inventory#index"
       get "inventory/low_stock", to: "inventory#low_stock"
       get "inventory/near_expiration", to: "inventory#near_expiration"

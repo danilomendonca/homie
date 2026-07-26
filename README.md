@@ -7,8 +7,9 @@ near-expiration views. See `thoughts/prd.md` for the full product spec.
 ## Requirements
 
 - Ruby 3.3+
-- PostgreSQL 16+ (the `citext` extension and a native `unit_type` enum are
-  used; both are provisioned by migrations)
+- PostgreSQL 16+ (the `citext`, `pgcrypto`, `pg_trgm` and `unaccent` extensions
+  and a native `unit_type` enum are used; all are provisioned by migrations, so
+  there is no manual DBA step)
 
 ## Setup
 
@@ -68,7 +69,9 @@ Endpoints:
 |---|---|---|
 | CRUD | `/v1/categories` | Categories |
 | CRUD | `/v1/products`, `POST /v1/products/bulk` | Products (+ bulk create) |
+| GET | `/v1/products/search` | Fuzzy (trigram) match on name **and** brand — `?q=` required, `?min_similarity=` (default 0.3), `?limit=` (default 20, max 100). Returns `similarity`, `name_similarity`, `brand_similarity` per hit |
 | CRUD | `/v1/inventory_items`, `POST /v1/inventory_items/bulk` | Inventory batches (+ bulk upsert) |
+| DELETE | `/v1/inventory_items` | Bulk reset — requires `?confirm=true`, optional `?product_id=` to scope; returns `{ "deleted": N }` |
 | GET | `/v1/inventory` | Aggregated stock per product (`?include_empty=true` to include zero-quantity) |
 | GET | `/v1/inventory/low_stock` | Products at/below their `low_stock_threshold` (strict `<`) |
 | GET | `/v1/inventory/near_expiration` | Batches in `expired` and `near_expiration` buckets (`?days=N`, default 3) |

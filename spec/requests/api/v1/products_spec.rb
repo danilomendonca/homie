@@ -97,6 +97,27 @@ RSpec.describe "Api::V1::Products", type: :request do
         end
       end
 
+      # Guard: ?search= stays a plain ILIKE substring match. Trigram search lives on
+      # /v1/products/search and must not leak into index — "ilk" scores far below
+      # the fuzzy threshold against all three of these names.
+      response "200", "keeps substring semantics rather than trigram scoring" do
+        schema type: :array, items: { "$ref" => "#/components/schemas/product" }
+        let(:category_id) { nil }
+        let(:search) { "ilk" }
+
+        before do
+          create(:product, name: "Almond Milk")
+          create(:product, name: "Whole Milk")
+          create(:product, name: "Milk")
+          create(:product, name: "Bread")
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body.map { |p| p["name"] }).to eq([ "Almond Milk", "Milk", "Whole Milk" ])
+        end
+      end
+
       response "200", "search matches brand as well as name" do
         schema type: :array, items: { "$ref" => "#/components/schemas/product" }
         let(:category_id) { nil }
