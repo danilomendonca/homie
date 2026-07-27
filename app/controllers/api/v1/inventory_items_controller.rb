@@ -57,10 +57,9 @@ module Api
         render json: { deleted: scope.delete_all }
       end
 
-      # Additive bulk: groups inputs by (product_id, expiration_date) and either
-      # merges into the oldest matching existing batch (update-context validators)
-      # or creates a new batch (create-context validators, including past-date rule).
-      # PRD §15: single-writer in v1, so no row lock — two concurrent bulks could lose updates.
+      # Additive bulk. The merge rule itself lives in InventoryBatchApplier so
+      # POST /v1/inventory/import shares it; this action owns only the HTTP
+      # surface (param permitting, limits, response envelopes).
       def bulk_create
         raise ActionController::ParameterMissing, :inventory_items unless params[:inventory_items].is_a?(Array)
 
@@ -69,17 +68,15 @@ module Api
             json: { errors: [ { message: "inventory_items array exceeds maximum of #{BULK_LIMIT} items" } ] }
         end
 
-        prepared = prepare_bulk_inputs(params[:inventory_items])
+        applier = InventoryBatchApplier.new(prepare_bulk_inputs(params[:inventory_items]))
 
-        shape_failures = collect_shape_failures(prepared)
+        shape_failures = applier.shape_failures
         return render status: :unprocessable_entity, json: { failed: shape_failures } if shape_failures.any?
 
-        groups = build_groups(prepared)
-
-        group_failures = collect_group_failures(groups)
+        group_failures = applier.group_failures
         return render status: :unprocessable_entity, json: { failed: group_failures } if group_failures.any?
 
-        created_ids, updated_ids = persist_groups(groups)
+        created_ids, updated_ids = applier.apply!
 
         loaded = InventoryItem.includes(:product).where(id: created_ids + updated_ids).index_by(&:id)
         render status: :created, json: {
@@ -118,111 +115,6 @@ module Api
           raw = attrs.is_a?(ActionController::Parameters) ? attrs.to_unsafe_h : attrs.to_h
           { index: index, raw: raw, permitted: permitted }
         end
-      end
-
-      def collect_shape_failures(prepared)
-        failures = {}
-        prepared.each do |entry|
-          item_errors = []
-          qty = entry[:permitted][:quantity]
-
-          if qty.nil? || (qty.respond_to?(:empty?) && qty.empty?)
-            item_errors << { field: "quantity", message: "can't be blank" }
-          else
-            begin
-              numeric = BigDecimal(qty.to_s)
-              if numeric < 0
-                item_errors << { field: "quantity", message: "must be greater than or equal to 0" }
-              end
-            rescue ArgumentError, TypeError
-              item_errors << { field: "quantity", message: "is not a number" }
-            end
-          end
-
-          if item_errors.any?
-            failures[entry[:index]] = { index: entry[:index], input: entry[:raw], errors: item_errors }
-          end
-        end
-        failures.values.sort_by { |f| f[:index] }
-      end
-
-      def build_groups(prepared)
-        product_ids = prepared.map { |e| e[:permitted][:product_id] }.compact.uniq
-        existing_by_key = {}
-        if product_ids.any?
-          InventoryItem.includes(:product)
-            .where(product_id: product_ids)
-            .order(:created_at, :id)
-            .each do |item|
-              key = [ item.product_id, item.expiration_date ]
-              existing_by_key[key] ||= item
-            end
-        end
-
-        groups_by_key = {}
-        prepared.each do |entry|
-          permitted = entry[:permitted]
-          key = [ permitted[:product_id], normalize_date(permitted[:expiration_date]) ]
-          delta = BigDecimal(permitted[:quantity].to_s)
-          group = groups_by_key[key] ||= { key: key, entries: [], total_delta: BigDecimal("0") }
-          group[:entries] << entry
-          group[:total_delta] += delta
-        end
-
-        groups_by_key.values.map do |group|
-          existing = existing_by_key[group[:key]]
-          if existing
-            existing.quantity = existing.quantity + group[:total_delta]
-            group[:record] = existing
-            group[:was_new] = false
-          else
-            product_id, exp_date = group[:key]
-            group[:record] = InventoryItem.new(
-              product_id: product_id,
-              expiration_date: exp_date,
-              quantity: group[:total_delta]
-            )
-            group[:was_new] = true
-          end
-          group
-        end
-      end
-
-      def normalize_date(value)
-        return nil if value.nil?
-        return nil if value.respond_to?(:empty?) && value.empty?
-        return value if value.is_a?(Date)
-        Date.parse(value.to_s)
-      rescue ArgumentError, TypeError
-        nil
-      end
-
-      def collect_group_failures(groups)
-        failures = {}
-        groups.each do |group|
-          record = group[:record]
-          next if record.valid?
-
-          record.errors.each do |err|
-            group[:entries].each do |entry|
-              bucket = failures[entry[:index]] ||= { index: entry[:index], input: entry[:raw], errors: [] }
-              bucket[:errors] << { field: err.attribute.to_s, message: err.message }
-            end
-          end
-        end
-        failures.values.sort_by { |f| f[:index] }
-      end
-
-      def persist_groups(groups)
-        created_ids = []
-        updated_ids = []
-        InventoryItem.transaction do
-          groups.each do |group|
-            group[:record].save!
-            (group[:was_new] ? created_ids : updated_ids) << group[:record].id
-          end
-        end
-        [ created_ids, updated_ids ]
       end
     end
   end

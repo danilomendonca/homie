@@ -77,6 +77,35 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     assert_response_schema_confirm(200)
   end
 
+  it "POST /v1/inventory/import" do
+    create(:product, name: "Leite Integral", unit_type: :volume)
+    create(:product, name: "Pão de Forma Integral", unit_type: :unit)
+    # dry_run so the round-trip is side-effect-free; the response shape is the
+    # same in both modes, with the ids nulled.
+    post "/v1/inventory/import", params: {
+      dry_run: true,
+      items: [
+        { name: "leite integral", quantity: 500 },
+        { name: "pao de forma", quantity: 1 }
+      ]
+    }, as: :json
+    assert_response_schema_confirm(200)
+  end
+
+  # The dry run above nulls every nested object, so it cannot validate them; this
+  # exercises the populated product / inventory_item branches of the same schema.
+  it "POST /v1/inventory/import (applied)" do
+    create(:product, name: "Leite Integral", unit_type: :volume)
+    post "/v1/inventory/import", params: {
+      create_unknown: true,
+      items: [
+        { name: "leite integral", quantity: 500 },
+        { name: "Farinha de Mandioca", quantity: 1, unit_type: "weight" }
+      ]
+    }, as: :json
+    assert_response_schema_confirm(200)
+  end
+
   it "GET /v1/openapi.json serves a valid OpenAPI 3 document" do
     get "/v1/openapi.json"
     expect(response).to have_http_status(:ok)
@@ -85,7 +114,7 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     expect(doc["paths"]).to include(
       "/v1/categories", "/v1/products", "/v1/products/search", "/v1/inventory_items",
       "/v1/inventory", "/v1/inventory/low_stock", "/v1/inventory/near_expiration",
-      "/v1/product_aliases", "/v1/product_aliases/lookup"
+      "/v1/inventory/import", "/v1/product_aliases", "/v1/product_aliases/lookup"
     )
   end
 end

@@ -206,6 +206,57 @@
         }
       }
     },
+    "/v1/inventory/import": {
+      "post": {
+        "summary": "Imports parsed receipt lines, resolving each against the catalogue",
+        "tags": [
+          "Inventory"
+        ],
+        "description": "Resolves each receipt line in order: exact (case-insensitive) product name, then product alias with a store-specific alias beating the wildcard, then trigram similarity over accent-stripped name and brand. A similarity hit is only taken when it is unambiguous — if more than one product clears auto_match_threshold, the top candidate must lead the runner-up by at least 0.05 on name_similarity, because every product of a matching brand scores 1.0 on the combined score. Lines that do not resolve are reported in `unmatched` with suggestions and are skipped; they are not errors. Set dry_run=true to preview the partitioning without writing (every inventory_item and every created product is then null, since nothing was persisted). create_unknown=true creates a product for an unresolved line, which requires unit_type on that line. NOT IDEMPOTENT: re-posting the same receipt adds the quantities again (PRD §15); there are no idempotency keys.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "accepts an empty items array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_import_response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "rolls the whole import back when one line is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item_bulk_failure_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects a non-numeric auto_match_threshold",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/inventory_import_request"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/inventory_items": {
       "get": {
         "summary": "Lists inventory items",
@@ -1867,6 +1918,247 @@
         "required": [
           "expired",
           "near_expiration"
+        ]
+      },
+      "inventory_import_request": {
+        "type": "object",
+        "properties": {
+          "store_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "create_unknown": {
+            "type": "boolean"
+          },
+          "auto_match_threshold": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "quantity": {
+                  "type": "number"
+                },
+                "expiration_date": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "brand": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "unit_type": {
+                  "type": "string",
+                  "enum": [
+                    "unit",
+                    "weight",
+                    "volume"
+                  ]
+                },
+                "category_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "name",
+                "quantity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "inventory_import_suggestion": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "similarity": {
+            "type": "number"
+          },
+          "name_similarity": {
+            "type": "number"
+          },
+          "brand_similarity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "product_id",
+          "name",
+          "similarity",
+          "name_similarity",
+          "brand_similarity"
+        ]
+      },
+      "inventory_import_matched_item": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "product": {
+            "$ref": "#/components/schemas/product"
+          },
+          "match_source": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "alias",
+              "similarity"
+            ]
+          },
+          "similarity": {
+            "type": "number",
+            "nullable": true
+          },
+          "name_similarity": {
+            "type": "number",
+            "nullable": true
+          },
+          "brand_similarity": {
+            "type": "number",
+            "nullable": true
+          },
+          "inventory_item": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/inventory_item"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "index",
+          "input",
+          "product",
+          "match_source",
+          "similarity",
+          "name_similarity",
+          "brand_similarity",
+          "inventory_item"
+        ]
+      },
+      "inventory_import_created_item": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "product": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/product"
+              }
+            ],
+            "nullable": true
+          },
+          "inventory_item": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/inventory_item"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "index",
+          "input",
+          "product",
+          "inventory_item"
+        ]
+      },
+      "inventory_import_unmatched_item": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "below_threshold",
+              "ambiguous_match",
+              "missing_unit_type"
+            ]
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_import_suggestion"
+            }
+          }
+        },
+        "required": [
+          "index",
+          "input",
+          "reason",
+          "suggestions"
+        ]
+      },
+      "inventory_import_response": {
+        "type": "object",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "matched": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_import_matched_item"
+            }
+          },
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_import_created_item"
+            }
+          },
+          "unmatched": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_import_unmatched_item"
+            }
+          }
+        },
+        "required": [
+          "applied",
+          "matched",
+          "created",
+          "unmatched"
         ]
       }
     }
