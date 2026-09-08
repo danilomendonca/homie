@@ -231,6 +231,24 @@ RSpec.describe "Api::V1::Inventory verify", type: :request do
         end
       end
 
+      response "200", "confirms a product with no batches is genuinely out of stock" do
+        schema "$ref" => "#/components/schemas/inventory_verify_response"
+
+        # "Did I actually run out of rice?" — the question the whole phase is
+        # shaped around, and the reason the timestamp lives on products: a product
+        # with zero batches has no batch row to stamp. counted == current == 0, so
+        # nothing is written and no batch is invented; only the timestamp moves.
+        before { @product = create(:product, unit_type: :weight) }
+
+        let(:payload) { { items: [ { product_id: @product.id, quantity: 0 } ] } }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)).to eq({ "verified" => 1 })
+          expect(@product.inventory_items.count).to eq(0)
+          expect(@product.reload.stock_verified_at).to be_present
+        end
+      end
+
       response "200", "sweeps a zero row the count never drained" do
         schema "$ref" => "#/components/schemas/inventory_verify_response"
 
@@ -248,6 +266,31 @@ RSpec.describe "Api::V1::Inventory verify", type: :request do
           # to zero (Phase 8's rule).
           expect(@product.inventory_items.pluck(:id)).to eq([ @stocked.id ])
           expect(@stocked.reload.quantity).to eq(3)
+        end
+      end
+
+      response "200", "sweeps a stray zero row even when the count was already correct" do
+        schema "$ref" => "#/components/schemas/inventory_verify_response"
+
+        before do
+          # The intersection of the two rules: the equal-count branch writes no
+          # quantity, but the sweep still fires. Asserting the *stocked* batch is
+          # untouched is what pins "no quantity writes" — a zero query count would
+          # contradict the sweep and be wrong.
+          @product = create(:product, unit_type: :weight)
+          @stray = create(:inventory_item, product: @product, quantity: 0, expiration_date: nil)
+          @stocked = create(:inventory_item, product: @product, quantity: 5,
+            expiration_date: Date.current + 2)
+          @stocked.update_column(:updated_at, 1.day.ago)
+        end
+
+        let(:payload) { { items: [ { product_id: @product.id, quantity: 5 } ] } }
+
+        run_test! do |_response|
+          expect(InventoryItem.exists?(@stray.id)).to be(false)
+          expect(@stocked.reload.quantity).to eq(5)
+          expect(@stocked.updated_at).to be < 1.hour.ago
+          expect(@product.reload.stock_verified_at).to be_present
         end
       end
 

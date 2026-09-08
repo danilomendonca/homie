@@ -25,7 +25,7 @@ class StockReconciler
   def failures
     @failures ||= begin
       failures = {}
-      seen = {}
+      seen = Set.new
 
       @entries.each do |entry|
         item_errors = []
@@ -53,12 +53,12 @@ class StockReconciler
         # top-level 404 cannot say which of twenty lines was bad.
         if product.nil?
           item_errors << { field: "product_id", message: "must reference an existing product" }
-        elsif seen.key?(product.id)
+        elsif seen.include?(product.id)
           # Second and later occurrences only, mirroring
           # ProductsController#collect_bulk_failures.
           item_errors << { field: "product_id", message: "is duplicated within verify request" }
         else
-          seen[product.id] = entry[:index]
+          seen << product.id
         end
 
         if product && counted && product.unit_type == "unit" && !(counted % 1).zero?
