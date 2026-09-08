@@ -79,6 +79,17 @@ RSpec.describe StockReconciler do
         ])
     end
 
+    it "rejects a count past InventoryItem::MAX_QUANTITY" do
+      expect(described_class.new([ entry(0, product.id, "1000000000") ]).failures.first[:errors])
+        .to eq([
+          { field: "quantity", message: "must be less than or equal to 999999999.999" }
+        ])
+    end
+
+    it "allows a count exactly at the ceiling" do
+      expect(described_class.new([ entry(0, product.id, "999999999.999") ]).failures).to eq([])
+    end
+
     it "allows a fractional count against a weight product" do
       expect(described_class.new([ entry(0, product.id, 1.5) ]).failures).to eq([])
     end

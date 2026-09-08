@@ -484,6 +484,26 @@ RSpec.describe "Api::V1::Inventory verify", type: :request do
         end
       end
 
+      response "422", "rejects a count past the quantity column's ceiling" do
+        schema "$ref" => "#/components/schemas/inventory_item_bulk_failure_response"
+
+        before { @product = create(:product, unit_type: :weight) }
+
+        # StockReconciler#failures never instantiates an InventoryItem, so this
+        # check lives there rather than being inherited from the model
+        # validation. Without it the count reaches save! and raises RangeError —
+        # a 500 instead of this envelope.
+        let(:payload) { { items: [ { product_id: @product.id, quantity: "1000000000" } ] } }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["failed"].first["errors"])
+            .to eq([ { "field" => "quantity",
+                       "message" => "must be less than or equal to 999999999.999" } ])
+          expect(@product.inventory_items.count).to eq(0)
+          expect(@product.reload.stock_verified_at).to be_nil
+        end
+      end
+
       response "422", "rejects a non-numeric quantity" do
         schema "$ref" => "#/components/schemas/inventory_item_bulk_failure_response"
 

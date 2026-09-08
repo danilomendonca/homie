@@ -29,6 +29,10 @@ class Product < ApplicationRecord
     match_similarity DESC, name_similarity DESC, products.name COLLATE "pt-x-icu" ASC
   SQL
 
+  # Same numeric(12,3) ceiling as InventoryItem::MAX_QUANTITY, for the same
+  # reason: past it Postgres raises RangeError and the request 500s.
+  MAX_LOW_STOCK_THRESHOLD = BigDecimal("999999999.999")
+
   enum :unit_type, { unit: "unit", weight: "weight", volume: "volume" }, validate: true
 
   belongs_to :category, optional: true
@@ -38,7 +42,7 @@ class Product < ApplicationRecord
   validates :name, presence: true, uniqueness: true
   validates :unit_type, presence: true
   validates :low_stock_threshold,
-    numericality: { greater_than_or_equal_to: 0 },
+    numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: MAX_LOW_STOCK_THRESHOLD },
     allow_nil: true
   validates :brand, length: { maximum: 100 }, allow_nil: true
   validates :notes, length: { maximum: 1000 }, allow_nil: true

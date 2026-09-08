@@ -41,6 +41,16 @@ class StockReconciler
             if counted < 0
               item_errors << { field: "quantity", message: "must be greater than or equal to 0" }
               counted = nil
+            elsif counted > InventoryItem::MAX_QUANTITY
+              # Checked here rather than inherited from the model validation: this
+              # pass never instantiates an InventoryItem, so without it an
+              # over-large count reaches save! and raises RangeError — a 500,
+              # instead of this endpoint's per-index envelope.
+              item_errors << {
+                field: "quantity",
+                message: "must be less than or equal to #{InventoryItem::MAX_QUANTITY.to_s('F')}"
+              }
+              counted = nil
             end
           rescue ArgumentError, TypeError
             item_errors << { field: "quantity", message: "is not a number" }

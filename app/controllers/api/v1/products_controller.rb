@@ -107,29 +107,33 @@ module Api
       end
 
       # Regex-then-range, as in InventoryController#parse_days: to_f/to_i on garbage
-      # would silently yield 0.
+      # would silently yield 0. Normalized through to_s first, because a repeated
+      # query param (?min_similarity[]=1) arrives as an Array, which answers
+      # neither match? nor to_f.
       def parse_min_similarity(raw)
         return SEARCH_DEFAULT_MIN_SIMILARITY if raw.nil?
 
-        unless raw.match?(/\A\d*\.?\d+\z/) && raw.to_f > 0 && raw.to_f <= 1
+        value = raw.to_s
+        unless value.match?(/\A\d*\.?\d+\z/) && value.to_f > 0 && value.to_f <= 1
           raise ActionController::BadRequest,
             "invalid value for query parameter `min_similarity`: " \
             "must be a number greater than 0 and at most 1"
         end
 
-        raw.to_f
+        value.to_f
       end
 
       def parse_limit(raw)
         return SEARCH_DEFAULT_LIMIT if raw.nil?
 
-        unless raw.match?(/\A\d+\z/) && (1..SEARCH_MAX_LIMIT).cover?(raw.to_i)
+        value = raw.to_s
+        unless value.match?(/\A\d+\z/) && (1..SEARCH_MAX_LIMIT).cover?(value.to_i)
           raise ActionController::BadRequest,
             "invalid value for query parameter `limit`: " \
             "must be an integer between 1 and #{SEARCH_MAX_LIMIT}"
         end
 
-        raw.to_i
+        value.to_i
       end
 
       def collect_bulk_failures(prepared)

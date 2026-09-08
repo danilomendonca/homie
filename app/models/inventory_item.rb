@@ -1,9 +1,16 @@
 class InventoryItem < ApplicationRecord
+  # The ceiling of quantity's numeric(12,3) column: 9 integer digits. Past it
+  # Postgres raises ActiveRecord::RangeError, which nothing rescues and which
+  # would surface as a 500 on every write path. A validation turns it into a
+  # 422 naming the field, which is also what lets InventoryBatchApplier
+  # #group_failures report it per index on the bulk and import paths.
+  MAX_QUANTITY = BigDecimal("999999999.999")
+
   belongs_to :product
 
   validates :quantity,
     presence: true,
-    numericality: { greater_than_or_equal_to: 0 }
+    numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: MAX_QUANTITY }
   validate :quantity_must_be_whole_number_when_unit
   validate :product_must_exist
   validate :expiration_date_not_in_past, on: :create

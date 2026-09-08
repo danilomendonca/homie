@@ -202,24 +202,29 @@ module Api
       def parse_sample_limit(raw)
         return SAMPLE_DEFAULT_LIMIT if raw.nil?
 
-        unless raw.match?(/\A\d+\z/) && (1..SAMPLE_MAX_LIMIT).cover?(raw.to_i)
+        value = raw.to_s
+        unless value.match?(/\A\d+\z/) && (1..SAMPLE_MAX_LIMIT).cover?(value.to_i)
           raise ActionController::BadRequest,
             "invalid value for query parameter `limit`: " \
             "must be an integer between 1 and #{SAMPLE_MAX_LIMIT}"
         end
 
-        raw.to_i
+        value.to_i
       end
 
+      # to_s first: a repeated query param (?days[]=3) arrives as an Array, which
+      # does not answer match? — the same normalization parse_threshold has always
+      # done.
       def parse_days(raw)
         return 3 if raw.nil?
 
-        unless raw.match?(/\A\d+\z/) && (0..365).cover?(raw.to_i)
+        value = raw.to_s
+        unless value.match?(/\A\d+\z/) && (0..365).cover?(value.to_i)
           raise ActionController::BadRequest,
             "invalid value for query parameter `days`: must be a non-negative integer between 0 and 365"
         end
 
-        raw.to_i
+        value.to_i
       end
 
       # Strict, not lenient: ActiveModel::Type::Boolean.cast returns true for
@@ -254,11 +259,20 @@ module Api
       # neither is derivable from a receipt.
       def prepare_import_lines(items)
         items.each_with_index.map do |attrs, index|
-          wrapped = attrs.is_a?(ActionController::Parameters) ? attrs : ActionController::Parameters.new(attrs.to_h)
+          # A non-object element (items: ["arroz"]) becomes an empty line rather
+          # than raising on .to_h, which used to 500. It then carries no name, so
+          # it resolves to nothing and is reported in `unmatched` and skipped —
+          # the same treatment a line with a blank name already gets.
+          wrapped =
+            case attrs
+            when ActionController::Parameters then attrs
+            when Hash then ActionController::Parameters.new(attrs)
+            else ActionController::Parameters.new
+            end
           permitted = wrapped.permit(:name, :quantity, :expiration_date, :brand, :unit_type, :category_id)
           {
             index:           index,
-            input:           attrs.is_a?(ActionController::Parameters) ? attrs.to_unsafe_h : attrs.to_h,
+            input:           wrapped.to_unsafe_h,
             name:            permitted[:name],
             quantity:        permitted[:quantity],
             expiration_date: permitted[:expiration_date],
