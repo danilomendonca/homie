@@ -12,6 +12,7 @@ module Api
           category: product.category && { id: product.category.id, name: product.category.name },
           unit_type: product.unit_type,
           low_stock_threshold: product.low_stock_threshold&.to_f,
+          stock_verified_at: product.stock_verified_at&.utc&.iso8601,
           created_at: product.created_at.utc.iso8601,
           updated_at: product.updated_at.utc.iso8601
         }

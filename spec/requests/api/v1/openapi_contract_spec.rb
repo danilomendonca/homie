@@ -106,6 +106,26 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     assert_response_schema_confirm(200)
   end
 
+  it "GET /v1/inventory/sample" do
+    product = create(:product, name: "Arroz", unit_type: :weight, low_stock_threshold: 1000)
+    create(:inventory_item, product: product, quantity: 500)
+    # A never-verified product alongside a verified one, so the round-trip covers
+    # both the null and the populated stock_verified_at.
+    create(:product, name: "Feijão", unit_type: :weight)
+      .update_column(:stock_verified_at, 2.days.ago)
+    get "/v1/inventory/sample"
+    assert_response_schema_confirm(200)
+  end
+
+  it "POST /v1/inventory/verify" do
+    product = create(:product, name: "Arroz", unit_type: :weight)
+    create(:inventory_item, product: product, quantity: 500)
+    post "/v1/inventory/verify", params: {
+      items: [ { product_id: product.id, quantity: 750 } ]
+    }, as: :json
+    assert_response_schema_confirm(200)
+  end
+
   it "GET /v1/openapi.json serves a valid OpenAPI 3 document" do
     get "/v1/openapi.json"
     expect(response).to have_http_status(:ok)
@@ -114,7 +134,8 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     expect(doc["paths"]).to include(
       "/v1/categories", "/v1/products", "/v1/products/search", "/v1/inventory_items",
       "/v1/inventory", "/v1/inventory/low_stock", "/v1/inventory/near_expiration",
-      "/v1/inventory/import", "/v1/product_aliases", "/v1/product_aliases/lookup"
+      "/v1/inventory/import", "/v1/inventory/sample", "/v1/inventory/verify",
+      "/v1/product_aliases", "/v1/product_aliases/lookup"
     )
   end
 end

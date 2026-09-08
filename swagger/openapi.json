@@ -632,6 +632,98 @@
         }
       }
     },
+    "/v1/inventory/sample": {
+      "get": {
+        "summary": "Lists the products most overdue for a stock count",
+        "tags": [
+          "Inventory"
+        ],
+        "description": "Returns products ordered least-recently-verified first — never-verified products (stock_verified_at null) lead, then oldest first, with the pt-BR collation on the product name as the tiebreak. Every product is a candidate, including ones with no batches and ones whose batches sum to zero: \"did I actually run out of rice?\" is exactly what a count answers. total_quantity is the quantity the API currently believes, to put in the question; low_stock_threshold lets the caller flag the answer without a second request. Write the answers back with POST /v1/inventory/verify.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns an empty items array when the catalogue is empty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_sample_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects a non-numeric limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inventory/verify": {
+      "post": {
+        "summary": "Writes counted stock levels back against products",
+        "tags": [
+          "Inventory"
+        ],
+        "description": "Records an absolute counted quantity per product and stamps stock_verified_at. The timestamp advances even when the count matches what the API already believed — without that, a product that is always right is indistinguishable from one that has never been counted and the sample re-surfaces it forever. Reconciliation against a product's batches: a decrease drains FEFO (earliest expiration first, undated batches last) and deletes every batch left at zero; an increase lands in the product's undated (expiration_date null) batch, creating it if absent, because an increase means an unrecorded purchase whose date is unknown and dating it on a guess would make near_expiration report the new stock as expiring; a count of zero deletes every batch. A partial reply is normal — only the products in the body are touched, and the rest keep their timestamp and stay at the front of the next sample. All-or-nothing: any per-index failure rolls the whole request back. The follow-up read is GET /v1/inventory.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "accepts an empty items array as a request that verifies nothing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_verify_response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reports a non-object element as a per-index failure rather than a 500",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item_bulk_failure_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects an items array over the limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/inventory_verify_request"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/product_aliases": {
       "get": {
         "summary": "Lists product aliases ordered by abbreviation ASC (pt-BR collation)",
@@ -1360,6 +1452,11 @@
             "type": "number",
             "nullable": true
           },
+          "stock_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -1377,6 +1474,7 @@
           "category",
           "unit_type",
           "low_stock_threshold",
+          "stock_verified_at",
           "created_at",
           "updated_at"
         ]
@@ -2159,6 +2257,99 @@
           "matched",
           "created",
           "unmatched"
+        ]
+      },
+      "inventory_sample_item": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "unit_type": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "weight",
+              "volume"
+            ]
+          },
+          "total_quantity": {
+            "type": "number"
+          },
+          "low_stock_threshold": {
+            "type": "number",
+            "nullable": true
+          },
+          "stock_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "product_id",
+          "product_name",
+          "unit_type",
+          "total_quantity",
+          "low_stock_threshold",
+          "stock_verified_at"
+        ]
+      },
+      "inventory_sample_response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/inventory_sample_item"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "inventory_verify_request": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "product_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "quantity": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "product_id",
+                "quantity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "inventory_verify_response": {
+        "type": "object",
+        "properties": {
+          "verified": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "verified"
         ]
       }
     }

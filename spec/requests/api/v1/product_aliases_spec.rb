@@ -124,7 +124,8 @@ RSpec.describe "Api::V1::ProductAliases", type: :request do
           expect(body["abbreviation"]).to eq("REFRIG COCA COLA 2L PET")
           expect(body["store_name"]).to eq("Oba")
           expect(body["product"].keys).to match_array(
-            %w[id name brand notes category unit_type low_stock_threshold created_at updated_at]
+            %w[id name brand notes category unit_type low_stock_threshold stock_verified_at
+               created_at updated_at]
           )
           expect(body["product"]["category"]["name"]).to eq("Bebidas")
         end

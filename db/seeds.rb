@@ -44,4 +44,11 @@ stock(products[:flour], quantity: 800)
 # Fully consumed (zero-quantity batch) — visible only via include_empty=true
 stock(products[:soap], quantity: 0)
 
+puts "Seeding stock verification timestamps…"
+# One recently counted, one long overdue, the rest never counted — enough for
+# GET /v1/inventory/sample's "never verified first, then oldest" ordering to be
+# demonstrable in a manual smoke without hand-editing rows.
+products[:milk].update_column(:stock_verified_at, Time.current - 2.hours)
+products[:rice].update_column(:stock_verified_at, Time.current - 45.days)
+
 puts "Seed complete: #{Category.count} categories, #{Product.count} products, #{InventoryItem.count} batches."

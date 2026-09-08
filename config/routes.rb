@@ -29,6 +29,8 @@ Rails.application.routes.draw do
       get "inventory/low_stock", to: "inventory#low_stock"
       get "inventory/near_expiration", to: "inventory#near_expiration"
       post "inventory/import", to: "inventory#import"
+      get "inventory/sample", to: "inventory#sample"
+      post "inventory/verify", to: "inventory#verify"
       get "openapi.json", to: "openapi#show"
     end
   end

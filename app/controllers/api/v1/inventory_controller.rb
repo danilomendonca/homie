@@ -2,15 +2,16 @@ module Api
   module V1
     class InventoryController < BaseController
       IMPORT_LIMIT = 500
+      VERIFY_LIMIT = 500
       DEFAULT_AUTO_MATCH_THRESHOLD = 0.6
+      SAMPLE_DEFAULT_LIMIT = 20
+      SAMPLE_MAX_LIMIT = 100
 
       def index
         include_empty = ActiveModel::Type::Boolean.new.cast(params[:include_empty]) || false
 
         scope = Product
-          .left_outer_joins(:inventory_items)
-          .group("products.id")
-          .select("products.*, COALESCE(SUM(inventory_items.quantity), 0) AS total_quantity")
+          .with_total_quantity
           .order(Arel.sql(%(products.name COLLATE "pt-x-icu" ASC)))
 
         scope = scope.having("COALESCE(SUM(inventory_items.quantity), 0) > 0") unless include_empty
@@ -29,10 +30,8 @@ module Api
 
       def low_stock
         products = Product
-          .left_outer_joins(:inventory_items)
+          .with_total_quantity
           .where.not(low_stock_threshold: nil)
-          .group("products.id")
-          .select("products.*, COALESCE(SUM(inventory_items.quantity), 0) AS total_quantity")
           .having("COALESCE(SUM(inventory_items.quantity), 0) < products.low_stock_threshold")
           .order(Arel.sql(
             "COALESCE(SUM(inventory_items.quantity), 0) / products.low_stock_threshold ASC, " \
@@ -128,7 +127,89 @@ module Api
         )
       end
 
+      # "Which products are most overdue for a count?" — the read half of the
+      # verification loop, ordered least-recently-verified first.
+      #
+      # The candidate set is every product, including those with no batches and
+      # those at zero total quantity: "did I actually run out of rice?" is exactly
+      # the question a count answers, and it is unanswerable if the sample only
+      # shows what is already in stock. This is the one place with_total_quantity
+      # is used unfiltered.
+      def sample
+        products = Product
+          .with_total_quantity
+          .order(Arel.sql(
+            'products.stock_verified_at ASC NULLS FIRST, products.name COLLATE "pt-x-icu" ASC'
+          ))
+          .limit(parse_sample_limit(params[:limit]))
+
+        render json: { items: products.map { |p| InventorySampleSerializer.serialize(p) } }
+      end
+
+      # Writes one counted number back per product. POST, not PATCH: PATCH here
+      # means JSON Merge Patch on a single resource (PRD §8.0), and every bulk
+      # action in this API is a POST.
+      #
+      # A partial reply is the normal case — only the products present in the body
+      # are touched, and the rest keep their old timestamp and stay at the front
+      # of the next sample.
+      def verify
+        raise ActionController::ParameterMissing, :items unless params[:items].is_a?(Array)
+
+        if params[:items].size > VERIFY_LIMIT
+          return render status: :bad_request,
+            json: { errors: [ { message: "items array exceeds maximum of #{VERIFY_LIMIT} items" } ] }
+        end
+
+        reconciler = StockReconciler.new(prepare_verify_entries(params[:items]))
+        failures = reconciler.failures
+        return render status: :unprocessable_entity, json: { failed: failures } if failures.any?
+
+        render json: { verified: reconciler.apply! }
+      end
+
       private
+
+      # Mirrors prepare_import_lines / prepare_bulk_inputs, with one divergence: a
+      # non-object element (items: ["arroz"]) becomes an empty line and so a
+      # per-index 422 rather than raising on .to_h. prepare_import_lines 500s
+      # there; that is a pre-existing bug on /import, not one to reproduce here.
+      #
+      # Its `input` echoes as {} because the shared failure schema types `input`
+      # as the object the caller sent for that line, and here the caller sent
+      # none. `index` is what identifies the offending line.
+      def prepare_verify_entries(items)
+        items.each_with_index.map do |attrs, index|
+          wrapped =
+            case attrs
+            when ActionController::Parameters then attrs
+            when Hash then ActionController::Parameters.new(attrs)
+            else ActionController::Parameters.new
+            end
+          permitted = wrapped.permit(:product_id, :quantity)
+
+          {
+            index: index,
+            raw:   wrapped.to_unsafe_h,
+            permitted: { product_id: permitted[:product_id], quantity: permitted[:quantity] }
+          }
+        end
+      end
+
+      # A copy of ProductsController#parse_limit rather than a shared helper: the
+      # only shared part is the constants, and the two endpoints' limits are free
+      # to diverge.
+      def parse_sample_limit(raw)
+        return SAMPLE_DEFAULT_LIMIT if raw.nil?
+
+        unless raw.match?(/\A\d+\z/) && (1..SAMPLE_MAX_LIMIT).cover?(raw.to_i)
+          raise ActionController::BadRequest,
+            "invalid value for query parameter `limit`: " \
+            "must be an integer between 1 and #{SAMPLE_MAX_LIMIT}"
+        end
+
+        raw.to_i
+      end
 
       def parse_days(raw)
         return 3 if raw.nil?

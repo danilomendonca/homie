@@ -159,6 +159,7 @@ CREATE TABLE public.products (
     updated_at timestamp(6) without time zone NOT NULL,
     brand public.citext,
     notes text,
+    stock_verified_at timestamp(6) without time zone,
     CONSTRAINT products_low_stock_threshold_non_negative CHECK (((low_stock_threshold IS NULL) OR (low_stock_threshold >= (0)::numeric)))
 );
 
@@ -291,6 +292,13 @@ CREATE INDEX index_products_on_name_trgm ON public.products USING gin (public.im
 
 
 --
+-- Name: index_products_on_stock_verified_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_products_on_stock_verified_at ON public.products USING btree (stock_verified_at NULLS FIRST);
+
+
+--
 -- Name: product_aliases fk_rails_11f90f487b; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -321,6 +329,7 @@ ALTER TABLE ONLY public.products
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260907120000'),
 ('20260726130000'),
 ('20260726120001'),
 ('20260726120000'),

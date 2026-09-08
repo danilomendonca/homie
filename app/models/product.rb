@@ -45,6 +45,16 @@ class Product < ApplicationRecord
   validate :low_stock_threshold_must_be_whole_number_when_unit
   validate :category_must_exist
 
+  # One place where "how much of this product is in stock" is expressed:
+  # inventory#index, #low_stock and #sample all read it. Grouping by the primary
+  # key leaves every products column functionally dependent, so callers can add
+  # their own having/order over any of them without a MAX() wrapper.
+  def self.with_total_quantity
+    left_outer_joins(:inventory_items)
+      .group("products.id")
+      .select("products.*, COALESCE(SUM(inventory_items.quantity), 0) AS total_quantity")
+  end
+
   # Trigram search over accent-stripped name and brand, returning name, brand and
   # combined scores as attributes on each row. Index usage is knowingly deferred:
   # the similarity() >= :min form cannot use the GIN indexes (only the % operator

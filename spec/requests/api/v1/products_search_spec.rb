@@ -212,7 +212,8 @@ RSpec.describe "Api::V1::Products search", type: :request do
           result = JSON.parse(response.body)["results"].first
           expect(result.keys).to eq(%w[product similarity name_similarity brand_similarity])
           expect(result["product"].keys).to match_array(
-            %w[id name brand notes category unit_type low_stock_threshold created_at updated_at]
+            %w[id name brand notes category unit_type low_stock_threshold stock_verified_at
+               created_at updated_at]
           )
           expect(result["product"]["category"]["name"]).to eq("Padaria")
         end

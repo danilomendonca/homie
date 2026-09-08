@@ -78,6 +78,8 @@ Endpoints:
 | GET | `/v1/inventory/low_stock` | Products at/below their `low_stock_threshold` (strict `<`) |
 | GET | `/v1/inventory/near_expiration` | Batches in `expired` and `near_expiration` buckets (`?days=N`, default 3) |
 | POST | `/v1/inventory/import` | Receipt import — resolves parsed receipt lines against the catalogue and applies the stock in one call. See below |
+| GET | `/v1/inventory/sample` | Products most overdue for a stock count, least-recently-verified first — `?limit=` (default 20, max 100). See below |
+| POST | `/v1/inventory/verify` | Writes counted stock levels back, reconciling each count against the product's batches and stamping `stock_verified_at`. See below |
 
 ## Receipt import
 
@@ -142,6 +144,71 @@ The fix for an unmatched line is the learning loop: dry-run the receipt, pick th
 right product, `POST /v1/product_aliases`, re-import — the line then resolves
 with `match_source: "alias"`. There is deliberately no per-line `product_id`
 override; a genuine one-off goes through `POST /v1/inventory_items/bulk`.
+
+## Stock verification
+
+Entering stock is one call, but nothing corrects the drift between what the API
+believes and what is on the shelf — and every downstream signal (low-stock
+alerts, grocery lists, recipe deltas) inherits that error. Two endpoints close
+the loop around one column, `products.stock_verified_at`.
+
+`GET /v1/inventory/sample` answers "which products are most overdue for a
+count?". It orders by `stock_verified_at ASC NULLS FIRST` — never-verified
+products lead, then oldest first — with the pt-BR collation on the product name
+as the tiebreak, and returns `total_quantity` and `low_stock_threshold` per row
+so the caller can pose the question and check the answer without a second
+request. **Every product is a candidate**, including ones with no batches and
+ones whose batches sum to zero: "did I actually run out of rice?" is exactly what
+a count answers, and `/v1/inventory` cannot ask it. There is no `batches` array —
+two batches differing only by `expiration_date` are indistinguishable on a shelf,
+so a per-batch question is unanswerable.
+
+`POST /v1/inventory/verify` writes the answers back:
+
+```jsonc
+{
+  "items": [                    // required, max 500
+    { "product_id": "…", "quantity": 3 }
+  ]
+}
+```
+
+**The counted quantity is absolute, not a delta**, and it is reconciled against
+the product's batches:
+
+- **Decrease** — drain FEFO: earliest expiration first, undated batches last.
+  Any batch left at zero is deleted, so no dead row survives for
+  `?include_empty=true` to report. Draining an *expired* batch works: the
+  past-date rule is create-context only, and counting down a product whose stock
+  went bad is exactly when verification is most needed.
+- **Increase** — the difference lands in the product's **undated**
+  (`expiration_date: null`) batch, creating it if the product has none. An
+  increase means an unrecorded purchase whose date is unknown; merging it into a
+  dated batch would make `near_expiration` report the newly counted stock as
+  expiring on the strength of a guess, or — when the only batches are expired —
+  as already expired. If the product happens to hold several undated batches
+  (`POST /v1/inventory_items` creates rows unconditionally), the oldest by
+  `(created_at, id)` grows and the others are left alone.
+- **Zero** — every batch for the product is deleted.
+
+**The timestamp advances even when the count was already correct.** That is the
+load-bearing rule, not an implementation detail: without it a product that is
+always right is indistinguishable from one that has never been counted, and the
+sample re-surfaces it forever.
+
+A **partial reply is the normal case** — answer some of the sampled products and
+ignore the rest. Only the products in the body are touched; the others keep their
+old timestamp and stay at the front of the next sample. The request is
+all-or-nothing, though: any per-index failure (unknown or duplicated
+`product_id`, a bad quantity, a fractional count on a `unit_type: unit` product)
+returns the 422 `failed` envelope and rolls the whole thing back. An unknown
+`product_id` is a per-index failure, never a top-level 404 — a 404 cannot say
+which of twenty lines was bad.
+
+The response is `{ "verified": N }`, counting every product in the body including
+the unchanged ones; the follow-up read is `GET /v1/inventory`.
+`POST /v1/inventory/verify` is the only writer of `stock_verified_at` — a
+`PATCH /v1/products/:id` carrying it is ignored.
 
 ## Regenerating the OpenAPI doc
 

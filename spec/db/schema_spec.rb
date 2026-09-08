@@ -90,6 +90,26 @@ RSpec.describe "Database schema (PRD §10, §13 invariants)" do
     )
   end
 
+  it "stores stock_verified_at at the same precision as every other timestamp" do
+    column = conn.columns(:products).find { |c| c.name == "stock_verified_at" }
+
+    expect(column.sql_type).to eq("timestamp(6) without time zone")
+    expect(column.null).to be(true)
+  end
+
+  it "indexes stock_verified_at NULLS FIRST for the sample ordering" do
+    # pg_indexes rather than conn.indexes: NULLS FIRST is the assertion, not merely
+    # that an index exists. It is non-default for an ascending btree, and without
+    # it inventory#sample's "never verified first" ordering loses its support.
+    defs = conn.execute(<<~SQL).to_a.map { |r| r["indexdef"] }
+      SELECT indexdef FROM pg_indexes WHERE tablename = 'products'
+    SQL
+
+    expect(defs).to include(
+      a_string_matching(/USING btree \(stock_verified_at NULLS FIRST\)/)
+    )
+  end
+
   it "cascades the product_aliases foreign key" do
     # An alias is meaningless without its product, and deliberately does not join
     # the Phase 3 delete-conflict rule — only active stock blocks a product delete.

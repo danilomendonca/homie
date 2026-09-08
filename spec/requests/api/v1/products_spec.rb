@@ -369,6 +369,19 @@ RSpec.describe "Api::V1::Products", type: :request do
         end
       end
 
+      response "200", "ignores stock_verified_at: POST /v1/inventory/verify is its only writer" do
+        schema "$ref" => "#/components/schemas/product"
+        let(:product) { create(:product, name: "Old") }
+        let(:id) { product.id }
+        let(:payload) { { name: "New", stock_verified_at: 2.days.ago.utc.iso8601 } }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["stock_verified_at"]).to be_nil
+          expect(product.reload.stock_verified_at).to be_nil
+          expect(product.name).to eq("New")
+        end
+      end
+
       response "200", "clears category_id with null" do
         schema "$ref" => "#/components/schemas/product"
         let(:category) { create(:category) }

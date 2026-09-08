@@ -60,10 +60,14 @@ RSpec.configure do |config|
               },
               unit_type:           { type: :string, enum: %w[unit weight volume] },
               low_stock_threshold: { type: :number, nullable: true },
+              # nullable is load-bearing: every product serializes null here until
+              # POST /v1/inventory/verify first counts it.
+              stock_verified_at:   { type: :string, format: :"date-time", nullable: true },
               created_at:          { type: :string, format: :"date-time" },
               updated_at:          { type: :string, format: :"date-time" }
             },
-            required: %w[id name brand notes category unit_type low_stock_threshold created_at updated_at]
+            required: %w[id name brand notes category unit_type low_stock_threshold
+                         stock_verified_at created_at updated_at]
           },
           product_alias: {
             type: :object,
@@ -423,6 +427,52 @@ RSpec.configure do |config|
               }
             },
             required: %w[applied matched created unmatched]
+          },
+          inventory_sample_item: {
+            type: :object,
+            properties: {
+              product_id:          { type: :string, format: :uuid },
+              product_name:        { type: :string },
+              unit_type:           { type: :string, enum: %w[unit weight volume] },
+              total_quantity:      { type: :number },
+              low_stock_threshold: { type: :number, nullable: true },
+              stock_verified_at:   { type: :string, format: :"date-time", nullable: true }
+            },
+            required: %w[product_id product_name unit_type total_quantity
+                         low_stock_threshold stock_verified_at]
+          },
+          inventory_sample_response: {
+            type: :object,
+            properties: {
+              items: {
+                type: :array,
+                items: { "$ref" => "#/components/schemas/inventory_sample_item" }
+              }
+            },
+            required: %w[items]
+          },
+          inventory_verify_request: {
+            type: :object,
+            properties: {
+              items: {
+                type: :array,
+                maxItems: 500,
+                items: {
+                  type: :object,
+                  properties: {
+                    product_id: { type: :string, format: :uuid },
+                    quantity:   { type: :number }
+                  },
+                  required: %w[product_id quantity]
+                }
+              }
+            },
+            required: %w[items]
+          },
+          inventory_verify_response: {
+            type: :object,
+            properties: { verified: { type: :integer } },
+            required: %w[verified]
           }
         }
       }
