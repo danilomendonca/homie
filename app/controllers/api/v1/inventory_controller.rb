@@ -3,6 +3,7 @@ module Api
     class InventoryController < BaseController
       IMPORT_LIMIT = 500
       VERIFY_LIMIT = 500
+      CONSUME_LIMIT = 500
       DEFAULT_AUTO_MATCH_THRESHOLD = 0.6
       SAMPLE_DEFAULT_LIMIT = 20
       SAMPLE_MAX_LIMIT = 100
@@ -161,15 +162,38 @@ module Api
             json: { errors: [ { message: "items array exceeds maximum of #{VERIFY_LIMIT} items" } ] }
         end
 
-        reconciler = StockReconciler.new(prepare_verify_entries(params[:items]))
+        reconciler = StockReconciler.new(prepare_product_quantity_entries(params[:items]))
         failures = reconciler.failures
         return render status: :unprocessable_entity, json: { failed: failures } if failures.any?
 
         render json: { verified: reconciler.apply! }
       end
 
+      # Removes stock per product without naming a batch — the consumption half of
+      # "batches are optional". FEFO across the product's batches, default batch
+      # last. Over-consumption is a 422, never a clamp: a mismatch is drift, and
+      # POST /v1/inventory/verify is the call that corrects it.
+      #
+      # Not idempotent (PRD §15): a retried request removes the stock twice.
+      def consume
+        raise ActionController::ParameterMissing, :items unless params[:items].is_a?(Array)
+
+        if params[:items].size > CONSUME_LIMIT
+          return render status: :bad_request,
+            json: { errors: [ { message: "items array exceeds maximum of #{CONSUME_LIMIT} items" } ] }
+        end
+
+        consumer = StockConsumer.new(prepare_product_quantity_entries(params[:items]))
+        failures = consumer.failures
+        return render status: :unprocessable_entity, json: { failed: failures } if failures.any?
+
+        render json: { consumed: consumer.apply! }
+      end
+
       private
 
+      # Shared by verify and consume, whose lines have the same shape.
+      #
       # Mirrors prepare_import_lines / prepare_bulk_inputs, with one divergence: a
       # non-object element (items: ["arroz"]) becomes an empty line and so a
       # per-index 422 rather than raising on .to_h. prepare_import_lines 500s
@@ -178,7 +202,7 @@ module Api
       # Its `input` echoes as {} because the shared failure schema types `input`
       # as the object the caller sent for that line, and here the caller sent
       # none. `index` is what identifies the offending line.
-      def prepare_verify_entries(items)
+      def prepare_product_quantity_entries(items)
         items.each_with_index.map do |attrs, index|
           wrapped =
             case attrs

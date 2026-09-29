@@ -192,35 +192,13 @@ RSpec.describe "Api::V1::Inventory verify", type: :request do
         end
       end
 
-      response "200", "grows the oldest of several undated batches and leaves the newer one alone" do
-        schema "$ref" => "#/components/schemas/inventory_verify_response"
-
-        before do
-          # POST /v1/inventory_items creates rows unconditionally, so a product can
-          # already hold two undated batches. Verify picks one by (created_at, id)
-          # rather than consolidating rows the count never asked about.
-          @product = create(:product, unit_type: :weight)
-          @older = create(:inventory_item, product: @product, quantity: 1, expiration_date: nil)
-          @newer = create(:inventory_item, product: @product, quantity: 1, expiration_date: nil)
-          @older.update_column(:created_at, 2.days.ago)
-        end
-
-        let(:payload) { { items: [ { product_id: @product.id, quantity: 5 } ] } }
-
-        run_test! do |_response|
-          expect(@product.inventory_items.count).to eq(2)
-          expect(@older.reload.quantity).to eq(4)
-          expect(@newer.reload.quantity).to eq(1)
-        end
-      end
-
       response "200", "deletes every batch when counted to zero, including one already at zero" do
         schema "$ref" => "#/components/schemas/inventory_verify_response"
 
         before do
           @product = create(:product, unit_type: :weight)
           create(:inventory_item, product: @product, quantity: 3)
-          create(:inventory_item, product: @product, quantity: 0)
+          create(:inventory_item, product: @product, quantity: 0, expiration_date: Date.current + 5)
         end
 
         let(:payload) { { items: [ { product_id: @product.id, quantity: 0 } ] } }

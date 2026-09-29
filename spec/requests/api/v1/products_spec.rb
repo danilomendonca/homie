@@ -537,7 +537,7 @@ RSpec.describe "Api::V1::Products", type: :request do
 
         before do
           create(:inventory_item, product: product, quantity: 0)
-          create(:inventory_item, product: product, quantity: 0)
+          create(:inventory_item, product: product, quantity: 0, expiration_date: Date.current + 5)
         end
 
         run_test! do

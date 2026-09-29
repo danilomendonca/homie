@@ -16,8 +16,6 @@
 # PRD §15: single-writer in v1, so no row lock — two concurrent writers could
 # lose updates.
 class StockReconciler
-  BATCH_ORDER_SQL = "expiration_date ASC NULLS LAST, created_at ASC, id ASC".freeze
-
   def initialize(entries)
     @entries = entries
   end
@@ -96,10 +94,7 @@ class StockReconciler
     now = Time.current
 
     InventoryItem.transaction do
-      batches_by_product = InventoryItem
-        .where(product_id: counts.keys)
-        .order(Arel.sql(BATCH_ORDER_SQL))
-        .group_by(&:product_id)
+      batches_by_product = FefoDrain.batches_by_product(counts.keys)
 
       emptied = []
 
@@ -108,7 +103,7 @@ class StockReconciler
         current = batches.sum(BigDecimal("0"), &:quantity)
 
         if counted < current
-          drain(batches, current - counted)
+          FefoDrain.drain(batches, current - counted)
         elsif counted > current
           increase(product_id, batches, counted - current)
         end
@@ -160,34 +155,13 @@ class StockReconciler
     end
   end
 
-  # FEFO: what got eaten is what was expiring soonest. Undated batches drain last
-  # (NULLS LAST in BATCH_ORDER_SQL).
-  #
-  # Draining an already-expired batch is fine because
-  # InventoryItem#expiration_date_not_in_past is on: :create — and it has to be,
-  # or verify would 422 exactly when it is most needed.
-  def drain(batches, deficit)
-    batches.each do |batch|
-      break if deficit <= 0
-
-      taken = [ batch.quantity, deficit ].min
-      batch.quantity -= taken
-      deficit -= taken
-      # A batch drained to zero is left unsaved: the sweep deletes it.
-      batch.save! if batch.quantity.positive?
-    end
-  end
-
   # An increase means an unrecorded purchase whose date is unknown, so it lands
   # in the undated bucket rather than on the latest-expiring batch — asserting a
   # date on a guess would make near_expiration report the new stock as expiring,
   # or (when the only batches are expired) as already expired.
   #
-  # A product can hold more than one NULL-expiration batch, since
-  # POST /v1/inventory_items creates rows unconditionally. The oldest by
-  # (created_at, id) wins — the same tiebreak InventoryBatchApplier uses for the
-  # same ambiguity. The others are deliberately left alone: consolidating them
-  # would rewrite rows this count never asked about.
+  # At most one undated batch exists per product
+  # (index_inventory_items_on_product_id_undated), so find is unambiguous.
   def increase(product_id, batches, surplus)
     undated = batches.find { |batch| batch.expiration_date.nil? }
 

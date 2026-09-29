@@ -20,6 +20,8 @@ RSpec.describe "Api::V1::Inventory import", type: :request do
         persisted). create_unknown=true creates a product for an unresolved line,
         which requires unit_type on that line. NOT IDEMPOTENT: re-posting the same
         receipt adds the quantities again (PRD §15); there are no idempotency keys.
+        A line without expiration_date lands in the product's default (undated)
+        batch; an unparseable expiration_date is a per-index 422.
       DESC
       parameter name: :payload, in: :body,
         schema: { "$ref" => "#/components/schemas/inventory_import_request" }
@@ -503,6 +505,22 @@ RSpec.describe "Api::V1::Inventory import", type: :request do
         run_test! do |response|
           body = JSON.parse(response.body)
           expect(body["failed"].first["errors"].map { |e| e["field"] }).to include("expiration_date")
+          expect(InventoryItem.count).to eq(0)
+        end
+      end
+
+      response "422", "rejects an unparseable expiration_date instead of landing the line undated" do
+        schema "$ref" => "#/components/schemas/inventory_item_bulk_failure_response"
+
+        before { create(:product, name: "Leite Integral", unit_type: :volume) }
+
+        let(:payload) { { items: [ { name: "Leite Integral", quantity: 500, expiration_date: "soon" } ] } }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["failed"].first["index"]).to eq(0)
+          expect(body["failed"].first["errors"])
+            .to eq([ { "field" => "expiration_date", "message" => "is not a valid date" } ])
           expect(InventoryItem.count).to eq(0)
         end
       end

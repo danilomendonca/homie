@@ -250,6 +250,13 @@ CREATE INDEX index_inventory_items_on_product_id_active_stock ON public.inventor
 
 
 --
+-- Name: index_inventory_items_on_product_id_undated; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_inventory_items_on_product_id_undated ON public.inventory_items USING btree (product_id) WHERE (expiration_date IS NULL);
+
+
+--
 -- Name: index_product_aliases_on_abbreviation_and_store_name; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -329,6 +336,7 @@ ALTER TABLE ONLY public.products
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260928120000'),
 ('20260907120000'),
 ('20260726130000'),
 ('20260726120001'),

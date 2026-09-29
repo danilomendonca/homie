@@ -195,10 +195,21 @@ RSpec.describe "Api::V1::InventoryItems", type: :request do
       end
     end
 
-    post "Creates an inventory item" do
+    post "Adds stock to a product, growing its default batch or a dated batch" do
       tags "InventoryItems"
       consumes "application/json"
       produces "application/json"
+      description <<~DESC.squish
+        Additive, and the same rule as a one-element POST /v1/inventory_items/bulk.
+        Without expiration_date (omitted or null) the quantity is added to the
+        product's default batch — its single undated batch — which is created if
+        absent; a product never holds more than one undated batch. With
+        expiration_date the quantity is added to the batch with that exact date,
+        or a new batch is created. 201 when a batch was created, 200 when an
+        existing one grew; the body is the batch either way. An unparseable
+        expiration_date is a 422 rather than a silent fall-through to the default
+        batch.
+      DESC
       parameter name: :payload, in: :body, schema: {
         type: :object,
         properties: {
@@ -368,6 +379,137 @@ RSpec.describe "Api::V1::InventoryItems", type: :request do
           expect(body["quantity"]).to eq(2.0)
         end
       end
+
+      # ------------------------------------------------------------- default batch
+
+      response "200", "grows the default batch: two undated POSTs leave one row holding the sum" do
+        schema "$ref" => "#/components/schemas/inventory_item"
+        let(:product) { create(:product, unit_type: :weight) }
+        let(:payload) { { product_id: product.id, quantity: 2 } }
+
+        before do
+          post "/v1/inventory_items", params: { product_id: product.id, quantity: 3 }, as: :json
+          expect(response).to have_http_status(:created)
+          @first_id = JSON.parse(response.body)["id"]
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["id"]).to eq(@first_id)
+          expect(body["quantity"]).to eq(5.0)
+          expect(body["expiration_date"]).to be_nil
+          expect(product.inventory_items.count).to eq(1)
+          expect(product.inventory_items.sole.quantity).to eq(5)
+        end
+      end
+
+      response "200", "grows the batch with the same expiration_date instead of adding a row" do
+        schema "$ref" => "#/components/schemas/inventory_item"
+        let(:product) { create(:product, unit_type: :weight) }
+        let(:date) { (Date.current + 7).iso8601 }
+        let!(:existing) { create(:inventory_item, product: product, quantity: 1, expiration_date: date) }
+        let(:payload) { { product_id: product.id, quantity: 4, expiration_date: date } }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["id"]).to eq(existing.id)
+          expect(body["quantity"]).to eq(5.0)
+          expect(product.inventory_items.count).to eq(1)
+        end
+      end
+
+      response "201", "creates a separate batch for a different expiration_date" do
+        schema "$ref" => "#/components/schemas/inventory_item"
+        let(:product) { create(:product, unit_type: :weight) }
+        let!(:existing) do
+          create(:inventory_item, product: product, quantity: 1, expiration_date: Date.current + 7)
+        end
+        let(:payload) { { product_id: product.id, quantity: 2, expiration_date: (Date.current + 14).iso8601 } }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["id"]).not_to eq(existing.id)
+          expect(product.inventory_items.count).to eq(2)
+          expect(existing.reload.quantity).to eq(1)
+        end
+      end
+
+      response "201", "creates the default batch alongside dated batches, leaving them untouched" do
+        schema "$ref" => "#/components/schemas/inventory_item"
+        let(:product) { create(:product, unit_type: :weight) }
+        let!(:dated) do
+          create(:inventory_item, product: product, quantity: 1, expiration_date: Date.current + 7)
+        end
+        let(:payload) { { product_id: product.id, quantity: 2 } }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["expiration_date"]).to be_nil
+          expect(body["quantity"]).to eq(2.0)
+          expect(product.inventory_items.count).to eq(2)
+          expect(dated.reload.quantity).to eq(1)
+        end
+      end
+
+      response "200", "merges an uppercase product_id into the existing default batch" do
+        schema "$ref" => "#/components/schemas/inventory_item"
+        let(:product) { create(:product, unit_type: :weight) }
+        let!(:default_batch) { create(:inventory_item, product: product, quantity: 1) }
+        let(:payload) { { product_id: product.id.upcase, quantity: 2 } }
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["id"]).to eq(default_batch.id)
+          expect(default_batch.reload.quantity).to eq(3)
+          expect(product.inventory_items.count).to eq(1)
+        end
+      end
+
+      response "422", "rejects a merge whose sum exceeds the quantity ceiling, writing nothing" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:product) { create(:product, unit_type: :weight) }
+        let!(:default_batch) { create(:inventory_item, product: product, quantity: 999_999_999) }
+        let(:payload) { { product_id: product.id, quantity: 1 } }
+
+        run_test! do |response|
+          fields = JSON.parse(response.body)["errors"].map { |e| e["field"] }
+          expect(fields).to include("quantity")
+          expect(default_batch.reload.quantity).to eq(999_999_999)
+        end
+      end
+
+      response "422", "rejects an unparseable expiration_date instead of landing it in the default batch" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:product) { create(:product, unit_type: :weight) }
+        let!(:default_batch) { create(:inventory_item, product: product, quantity: 1) }
+        let(:payload) { { product_id: product.id, quantity: 2, expiration_date: "soon" } }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["errors"])
+            .to eq([ { "field" => "expiration_date", "message" => "is not a valid date" } ])
+          expect(default_batch.reload.quantity).to eq(1)
+          expect(product.inventory_items.count).to eq(1)
+        end
+      end
+
+      it "rejects an out-of-range calendar date the same way" do
+        product = create(:product, unit_type: :weight)
+        post "/v1/inventory_items", params: { product_id: product.id, quantity: 1, expiration_date: "2026-13-45" },
+          as: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)["errors"].map { |e| e["field"] }).to eq([ "expiration_date" ])
+        expect(product.inventory_items.count).to eq(0)
+      end
+
+      it "treats a blank or null expiration_date as the default batch" do
+        product = create(:product, unit_type: :weight)
+        post "/v1/inventory_items", params: { product_id: product.id, quantity: 1, expiration_date: "" }, as: :json
+        expect(response).to have_http_status(:created)
+        post "/v1/inventory_items", params: { product_id: product.id, quantity: 2, expiration_date: nil }, as: :json
+        expect(response).to have_http_status(:ok)
+
+        expect(product.inventory_items.sole.quantity).to eq(3)
+      end
     end
 
     delete "Deletes inventory items in bulk" do
@@ -532,6 +674,12 @@ RSpec.describe "Api::V1::InventoryItems", type: :request do
       tags "InventoryItems"
       consumes "application/json"
       produces "application/json"
+      description <<~DESC.squish
+        JSON Merge Patch on one batch; quantity is absolute. Clearing
+        expiration_date (null) is a 422 when the product already has an undated
+        default batch — a product holds at most one. An unparseable
+        expiration_date is a 422 as not a valid date.
+      DESC
       parameter name: :payload, in: :body, schema: {
         type: :object,
         properties: {
@@ -647,6 +795,36 @@ RSpec.describe "Api::V1::InventoryItems", type: :request do
           expect(fields).to include("quantity")
         end
       end
+
+      response "422", "rejects clearing expiration_date when the product already has an undated batch" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:product) { create(:product, unit_type: :weight) }
+        let!(:default_batch) { create(:inventory_item, product: product, quantity: 1) }
+        let(:item) { create(:inventory_item, product: product, expiration_date: Date.current + 5) }
+        let(:id) { item.id }
+        let(:payload) { { expiration_date: nil } }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["errors"]).to eq([
+            { "field" => "expiration_date", "message" => "must be present: product already has an undated batch" }
+          ])
+          expect(item.reload.expiration_date).to eq(Date.current + 5)
+        end
+      end
+
+      response "422", "rejects an unparseable expiration_date as not a valid date, not as a default-batch conflict" do
+        schema "$ref" => "#/components/schemas/error_envelope"
+        let(:product) { create(:product, unit_type: :weight) }
+        let!(:default_batch) { create(:inventory_item, product: product, quantity: 1) }
+        let(:item) { create(:inventory_item, product: product, expiration_date: Date.current + 5) }
+        let(:id) { item.id }
+        let(:payload) { { expiration_date: "soon" } }
+
+        run_test! do |response|
+          expect(JSON.parse(response.body)["errors"])
+            .to eq([ { "field" => "expiration_date", "message" => "is not a valid date" } ])
+        end
+      end
     end
 
     delete "Deletes an inventory item" do
@@ -687,6 +865,13 @@ RSpec.describe "Api::V1::InventoryItems", type: :request do
       tags "InventoryItems"
       consumes "application/json"
       produces "application/json"
+      description <<~DESC.squish
+        Additive: entries are grouped by (product_id, expiration_date) and each
+        group grows the oldest existing batch with that key or creates one. An
+        undated entry lands in the product's default batch (at most one per
+        product). An unparseable expiration_date is a per-index 422; omit it or
+        send null for the default batch. All-or-nothing.
+      DESC
       parameter name: :payload, in: :body,
         schema: { "$ref" => "#/components/schemas/inventory_item_bulk_request" }
 
@@ -1013,6 +1198,47 @@ RSpec.describe "Api::V1::InventoryItems", type: :request do
         run_test! do |response|
           body = JSON.parse(response.body)
           expect(body["errors"].first["message"]).to match(/maximum/)
+          expect(InventoryItem.count).to eq(0)
+        end
+      end
+
+      response "201", "groups lowercase and uppercase ids for one product into one default batch" do
+        schema "$ref" => "#/components/schemas/inventory_item_bulk_response"
+        let(:product) { create(:product, unit_type: :weight) }
+        let(:payload) do
+          {
+            inventory_items: [
+              { product_id: product.id, quantity: 1 },
+              { product_id: product.id.upcase, quantity: 2 }
+            ]
+          }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["created"].length).to eq(1)
+          expect(body["created"].first["quantity"]).to eq(3.0)
+          expect(product.inventory_items.sole.quantity).to eq(3)
+        end
+      end
+
+      response "422", "shape-fails on an unparseable expiration_date, writing nothing" do
+        schema "$ref" => "#/components/schemas/inventory_item_bulk_failure_response"
+        let(:product) { create(:product, unit_type: :weight) }
+        let(:payload) do
+          {
+            inventory_items: [
+              { product_id: product.id, quantity: 1 },
+              { product_id: product.id, quantity: 2, expiration_date: "soon" }
+            ]
+          }
+        end
+
+        run_test! do |response|
+          body = JSON.parse(response.body)
+          expect(body["failed"].map { |f| f["index"] }).to eq([ 1 ])
+          expect(body["failed"].first["errors"])
+            .to eq([ { "field" => "expiration_date", "message" => "is not a valid date" } ])
           expect(InventoryItem.count).to eq(0)
         end
       end

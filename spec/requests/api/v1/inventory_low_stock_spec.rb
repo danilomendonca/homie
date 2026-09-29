@@ -26,7 +26,7 @@ RSpec.describe "Api::V1::InventoryLowStock", type: :request do
         before do
           @product = create(:product, low_stock_threshold: 10, unit_type: :weight)
           create(:inventory_item, product: @product, quantity: 2)
-          create(:inventory_item, product: @product, quantity: 3)
+          create(:inventory_item, product: @product, quantity: 3, expiration_date: Date.current + 5)
         end
 
         run_test! do |response|

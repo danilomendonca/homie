@@ -18,9 +18,23 @@ module Api
         render json: InventoryItemSerializer.serialize(@item)
       end
 
+      # A bulk of one: the additive rule lives in InventoryBatchApplier, and the
+      # single POST shares it rather than keeping a second, row-per-call rule. An
+      # undated write grows the product's default batch; a dated one grows the
+      # batch with that exact date. 201 when a row was created, 200 when one grew.
       def create
-        item = InventoryItem.create!(create_params)
-        render status: :created, json: InventoryItemSerializer.serialize(item)
+        permitted = create_params
+        applier = InventoryBatchApplier.new([ { index: 0, raw: permitted.to_h, permitted: permitted } ])
+
+        failures = applier.shape_failures
+        failures = applier.group_failures if failures.empty?
+        if failures.any?
+          return render status: :unprocessable_entity, json: { errors: failures.first[:errors] }
+        end
+
+        created_ids, = applier.apply!
+        item = InventoryItem.includes(:product).find(applier.record_for(0).id)
+        render status: created_ids.any? ? :created : :ok, json: InventoryItemSerializer.serialize(item)
       end
 
       def update

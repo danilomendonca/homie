@@ -18,10 +18,22 @@ products = {
 puts "Seeding inventory_items (mixed expiration / stock states)…"
 today = Date.current
 
-# Idempotent on (quantity, expiration_date). Saves with validate: false because the
-# demo set deliberately includes an expired batch, which the on:create
-# expiration_date validation would otherwise reject. Seed data is trusted.
+# Idempotent on (quantity, expiration_date) for dated batches. Saves with
+# validate: false because the demo set deliberately includes an expired batch,
+# which the on:create expiration_date validation would otherwise reject. Seed
+# data is trusted.
+#
+# An undated batch is the product's one default batch (a partial unique index
+# enforces it), so it is looked up by expiration_date alone and reset to the
+# seeded quantity — otherwise a re-seed after the quantity changed would insert
+# a second undated row and raise RecordNotUnique.
 def stock(product, quantity:, expiration_date: nil)
+  if expiration_date.nil?
+    item = product.inventory_items.find_or_initialize_by(expiration_date: nil)
+    item.quantity = quantity
+    return item.tap { |i| i.save!(validate: false) }
+  end
+
   scope = product.inventory_items.where(quantity: quantity, expiration_date: expiration_date)
   scope.first || scope.build.tap { |item| item.save!(validate: false) }
 end

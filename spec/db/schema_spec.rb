@@ -41,6 +41,20 @@ RSpec.describe "Database schema (PRD §10, §13 invariants)" do
     )
   end
 
+  it "allows at most one undated inventory batch per product" do
+    defs = conn.execute(<<~SQL).to_a.map { |r| r["indexdef"] }
+      SELECT indexdef FROM pg_indexes WHERE tablename = 'inventory_items'
+    SQL
+
+    # The predicate is the assertion: a plain unique index on product_id would
+    # forbid every dated batch.
+    expect(defs).to include(
+      a_string_matching(
+        /CREATE UNIQUE INDEX .* ON (?:public\.)?inventory_items USING btree \(product_id\) WHERE \(expiration_date IS NULL\)/
+      )
+    )
+  end
+
   it "defines the unit_type enum with the three documented values" do
     result = conn.execute(<<~SQL).to_a
       SELECT enumlabel

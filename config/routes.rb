@@ -31,6 +31,7 @@ Rails.application.routes.draw do
       post "inventory/import", to: "inventory#import"
       get "inventory/sample", to: "inventory#sample"
       post "inventory/verify", to: "inventory#verify"
+      post "inventory/consume", to: "inventory#consume"
       get "openapi.json", to: "openapi#show"
     end
   end

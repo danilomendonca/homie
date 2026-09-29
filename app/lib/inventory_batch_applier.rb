@@ -8,7 +8,9 @@
 #
 # Call order matters: #shape_failures must be consulted (and be empty) before
 # #groups or #group_failures, because grouping casts quantity with BigDecimal()
-# and that raises on exactly the garbage the shape pass exists to catch.
+# and that raises on exactly the garbage the shape pass exists to catch. The
+# shape pass also guarantees every non-blank expiration_date parses, so a nil
+# date in a group key always means "the default batch", never a typo.
 #
 # PRD §15: single-writer in v1, so no row lock — two concurrent writers could
 # lose updates.
@@ -35,6 +37,14 @@ class InventoryBatchApplier
           rescue ArgumentError, TypeError
             item_errors << { field: "quantity", message: "is not a number" }
           end
+        end
+
+        # present?, not nil?: "" still means "no date". A value that does not
+        # parse would otherwise normalize to nil and silently land in the default
+        # batch.
+        date = entry[:permitted][:expiration_date]
+        if date.present? && normalize_date(date).nil?
+          item_errors << { field: "expiration_date", message: "is not a valid date" }
         end
 
         if item_errors.any?
@@ -97,7 +107,7 @@ class InventoryBatchApplier
   end
 
   def build_groups
-    product_ids = @entries.map { |e| e[:permitted][:product_id] }.compact.uniq
+    product_ids = @entries.filter_map { |e| product_id_for(e) }.uniq
     existing_by_key = {}
     if product_ids.any?
       InventoryItem.includes(:product)
@@ -112,7 +122,7 @@ class InventoryBatchApplier
     groups_by_key = {}
     @entries.each do |entry|
       permitted = entry[:permitted]
-      key = [ permitted[:product_id], normalize_date(permitted[:expiration_date]) ]
+      key = [ product_id_for(entry), normalize_date(permitted[:expiration_date]) ]
       delta = BigDecimal(permitted[:quantity].to_s)
       group = groups_by_key[key] ||= { key: key, entries: [], total_delta: BigDecimal("0") }
       group[:entries] << entry
@@ -136,6 +146,14 @@ class InventoryBatchApplier
       end
       group
     end
+  end
+
+  # Cast, never the raw string — see StockReconciler#product_id_for. An
+  # uppercase id would otherwise miss its existing batch and, for an undated
+  # write, collide with the default batch. A malformed id casts to nil, which is
+  # what the model attribute does with it anyway.
+  def product_id_for(entry)
+    Product.type_for_attribute(:id).cast(entry[:permitted][:product_id])
   end
 
   def normalize_date(value)

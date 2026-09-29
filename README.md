@@ -72,7 +72,7 @@ Endpoints:
 | GET | `/v1/products/search` | Fuzzy (trigram) match on name **and** brand — `?q=` required, `?min_similarity=` (default 0.3), `?limit=` (default 20, max 100). Returns `similarity`, `name_similarity`, `brand_similarity` per hit |
 | CRUD | `/v1/product_aliases` | Learned store-abbreviation → product map. `?store_name=` and `?product_id=` filter `index` (the store filter is exact — it does not include inherited wildcards). `store_name: null` is the wildcard tier that applies to every store; `(abbreviation, store_name)` is unique case-insensitively, wildcard included |
 | GET | `/v1/product_aliases/lookup` | Exact (case-insensitive) resolution of one abbreviation — `?abbreviation=` required, `?store_name=` optional. A store-specific alias beats the wildcard; 404 when nothing matches. No fuzzy fallback — that is `/v1/products/search` |
-| CRUD | `/v1/inventory_items`, `POST /v1/inventory_items/bulk` | Inventory batches (+ bulk upsert) |
+| CRUD | `/v1/inventory_items`, `POST /v1/inventory_items/bulk` | Inventory batches (+ bulk upsert). `POST` is additive — undated writes go to the product's default batch, dated ones to the batch with that date (`201` created / `200` grown). See below |
 | DELETE | `/v1/inventory_items` | Bulk reset — requires `?confirm=true`, optional `?product_id=` to scope; returns `{ "deleted": N }` |
 | GET | `/v1/inventory` | Aggregated stock per product (`?include_empty=true` to include zero-quantity) |
 | GET | `/v1/inventory/low_stock` | Products at/below their `low_stock_threshold` (strict `<`) |
@@ -80,6 +80,52 @@ Endpoints:
 | POST | `/v1/inventory/import` | Receipt import — resolves parsed receipt lines against the catalogue and applies the stock in one call. See below |
 | GET | `/v1/inventory/sample` | Products most overdue for a stock count, least-recently-verified first — `?limit=` (default 20, max 100). See below |
 | POST | `/v1/inventory/verify` | Writes counted stock levels back, reconciling each count against the product's batches and stamping `stock_verified_at`. See below |
+| POST | `/v1/inventory/consume` | Removes a quantity per product, draining FEFO across its batches (default batch last), without naming a batch. Returns each product's remaining `total_quantity`. **Not idempotent.** See below |
+
+## Default batch & consumption
+
+Batches and expiration dates are an optional refinement. Every product has at
+most one **default batch** — its single `expiration_date: null` row, enforced by
+a partial unique index — and every write that leaves out a date lands there.
+
+`POST /v1/inventory_items` is additive and follows the same rule as a
+one-element `POST /v1/inventory_items/bulk`:
+
+- no `expiration_date` (omitted or `null`) → grows the default batch, creating it
+  if absent;
+- an `expiration_date` → grows the batch with that exact date, or creates one.
+
+It answers `201` when a batch was created and `200` when an existing one grew;
+the body is the batch either way. An unparseable `expiration_date` (`"soon"`,
+`"2026-13-45"`) is a 422 rather than a silent fall-through to the default batch —
+the same holds for `bulk`, `import` and `PATCH`. A `PATCH` that clears
+`expiration_date` on a dated batch is a 422 when the product already has a
+default batch.
+
+`POST /v1/inventory/consume` removes stock by product:
+
+```jsonc
+{
+  "items": [                    // required, max 500
+    { "product_id": "…", "quantity": 500 }   // quantity > 0
+  ]
+}
+```
+
+- It drains **FEFO** — earliest expiration first, expired batches included, the
+  default batch last — and deletes every batch of a touched product that ends at
+  zero.
+- Lines naming the same product are **summed**: two consumption events are two
+  facts (unlike `verify`, where two counts are ambiguous).
+- Consuming **more than the stock on hand is a per-index 422** on every line
+  naming that product, with the stock on hand in the message. It never clamps:
+  the mismatch is drift, and `POST /v1/inventory/verify` is the call that
+  corrects it.
+- It does **not** touch `stock_verified_at` — using stock does not confirm a count.
+- The response is `{ "consumed": [{ "product_id": "…", "total_quantity": 3.0 }] }`,
+  one entry per distinct product in request order.
+- **Not idempotent** (PRD §15): a retried request removes the stock twice. Read
+  `GET /v1/inventory` before retrying after a timeout.
 
 ## Receipt import
 
@@ -186,9 +232,8 @@ the product's batches:
   increase means an unrecorded purchase whose date is unknown; merging it into a
   dated batch would make `near_expiration` report the newly counted stock as
   expiring on the strength of a guess, or — when the only batches are expired —
-  as already expired. If the product happens to hold several undated batches
-  (`POST /v1/inventory_items` creates rows unconditionally), the oldest by
-  `(created_at, id)` grows and the others are left alone.
+  as already expired. A product holds at most one undated batch (a partial
+  unique index guarantees it), so there is never a choice to make.
 - **Zero** — every batch for the product is deleted.
 
 **The timestamp advances even when the count was already correct.** That is the

@@ -126,6 +126,23 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
     assert_response_schema_confirm(200)
   end
 
+  it "POST /v1/inventory/consume" do
+    product = create(:product, name: "Arroz", unit_type: :weight)
+    create(:inventory_item, product: product, quantity: 500)
+    post "/v1/inventory/consume", params: {
+      items: [ { product_id: product.id, quantity: 200 } ]
+    }, as: :json
+    assert_response_schema_confirm(200)
+  end
+
+  it "POST /v1/inventory_items growing the default batch" do
+    product = create(:product, name: "Arroz", unit_type: :weight)
+    create(:inventory_item, product: product, quantity: 500)
+    post "/v1/inventory_items", params: { product_id: product.id, quantity: 200 }, as: :json
+    expect(response).to have_http_status(:ok)
+    assert_response_schema_confirm(200)
+  end
+
   it "GET /v1/openapi.json serves a valid OpenAPI 3 document" do
     get "/v1/openapi.json"
     expect(response).to have_http_status(:ok)
@@ -135,6 +152,7 @@ RSpec.describe "OpenAPI contract round-trip", type: :request do
       "/v1/categories", "/v1/products", "/v1/products/search", "/v1/inventory_items",
       "/v1/inventory", "/v1/inventory/low_stock", "/v1/inventory/near_expiration",
       "/v1/inventory/import", "/v1/inventory/sample", "/v1/inventory/verify",
+      "/v1/inventory/consume",
       "/v1/product_aliases", "/v1/product_aliases/lookup"
     )
   end

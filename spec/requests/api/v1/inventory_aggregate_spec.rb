@@ -36,7 +36,7 @@ RSpec.describe "Api::V1::InventoryAggregate", type: :request do
         before do
           @product = create(:product, name: "AllZero")
           create(:inventory_item, product: @product, quantity: 0)
-          create(:inventory_item, product: @product, quantity: 0)
+          create(:inventory_item, product: @product, quantity: 0, expiration_date: Date.current + 5)
         end
 
         run_test! do |response|
@@ -146,8 +146,8 @@ RSpec.describe "Api::V1::InventoryAggregate", type: :request do
         before do
           @product = create(:product, unit_type: :weight)
           create(:inventory_item, product: @product, quantity: 2.5)
-          create(:inventory_item, product: @product, quantity: 3.0)
-          create(:inventory_item, product: @product, quantity: 0.5)
+          create(:inventory_item, product: @product, quantity: 3.0, expiration_date: Date.current + 5)
+          create(:inventory_item, product: @product, quantity: 0.5, expiration_date: Date.current + 10)
         end
 
         run_test! do |response|
@@ -183,7 +183,7 @@ RSpec.describe "Api::V1::InventoryAggregate", type: :request do
         before do
           5.times do
             product = create(:product)
-            3.times { create(:inventory_item, product: product, quantity: 1) }
+            3.times { |i| create(:inventory_item, product: product, quantity: 1, expiration_date: Date.current + i + 1) }
           end
         end
 

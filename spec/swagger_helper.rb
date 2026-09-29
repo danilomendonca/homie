@@ -473,6 +473,41 @@ RSpec.configure do |config|
             type: :object,
             properties: { verified: { type: :integer } },
             required: %w[verified]
+          },
+          inventory_consume_request: {
+            type: :object,
+            properties: {
+              items: {
+                type: :array,
+                maxItems: 500,
+                items: {
+                  type: :object,
+                  properties: {
+                    product_id: { type: :string, format: :uuid },
+                    quantity:   { type: :number, minimum: 0, exclusiveMinimum: true }
+                  },
+                  required: %w[product_id quantity]
+                }
+              }
+            },
+            required: %w[items]
+          },
+          inventory_consume_response: {
+            type: :object,
+            properties: {
+              consumed: {
+                type: :array,
+                items: {
+                  type: :object,
+                  properties: {
+                    product_id:     { type: :string, format: :uuid },
+                    total_quantity: { type: :number }
+                  },
+                  required: %w[product_id total_quantity]
+                }
+              }
+            },
+            required: %w[consumed]
           }
         }
       }

@@ -206,13 +206,64 @@
         }
       }
     },
+    "/v1/inventory/consume": {
+      "post": {
+        "summary": "Removes consumed stock per product, without naming a batch",
+        "tags": [
+          "Inventory"
+        ],
+        "description": "Subtracts a stated quantity per product, draining its batches FEFO (earliest expiration first, expired batches included, the undated default batch last) and deleting every batch of a touched product left at zero. Lines naming the same product are summed — two consumption events are two facts. Consuming more than the product's stock on hand is a per-index 422 on every line naming that product, with the stock on hand in the message; it never clamps at zero, because the mismatch is drift and POST /v1/inventory/verify is the call that corrects it. Returns each distinct product's remaining total_quantity, in order of first appearance. Does not touch stock_verified_at: using stock does not confirm a count. All-or-nothing. NOT IDEMPOTENT (PRD §15): a retried request removes the stock twice, so do not retry blindly after a timeout — read GET /v1/inventory first.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "accepts an empty items array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_consume_response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reports a non-object element per index rather than raising",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item_bulk_failure_response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rejects an items array exceeding the limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/inventory_consume_request"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/inventory/import": {
       "post": {
         "summary": "Imports parsed receipt lines, resolving each against the catalogue",
         "tags": [
           "Inventory"
         ],
-        "description": "Resolves each receipt line in order: exact (case-insensitive) product name, then product alias with a store-specific alias beating the wildcard, then trigram similarity over accent-stripped name and brand. A similarity hit is only taken when it is unambiguous — if more than one product clears auto_match_threshold, the top candidate must lead the runner-up by at least 0.05 on name_similarity, because every product of a matching brand scores 1.0 on the combined score. Lines that do not resolve are reported in `unmatched` with suggestions and are skipped; they are not errors. Set dry_run=true to preview the partitioning without writing (every inventory_item and every created product is then null, since nothing was persisted). create_unknown=true creates a product for an unresolved line, which requires unit_type on that line. NOT IDEMPOTENT: re-posting the same receipt adds the quantities again (PRD §15); there are no idempotency keys.",
+        "description": "Resolves each receipt line in order: exact (case-insensitive) product name, then product alias with a store-specific alias beating the wildcard, then trigram similarity over accent-stripped name and brand. A similarity hit is only taken when it is unambiguous — if more than one product clears auto_match_threshold, the top candidate must lead the runner-up by at least 0.05 on name_similarity, because every product of a matching brand scores 1.0 on the combined score. Lines that do not resolve are reported in `unmatched` with suggestions and are skipped; they are not errors. Set dry_run=true to preview the partitioning without writing (every inventory_item and every created product is then null, since nothing was persisted). create_unknown=true creates a product for an unresolved line, which requires unit_type on that line. NOT IDEMPOTENT: re-posting the same receipt adds the quantities again (PRD §15); there are no idempotency keys. A line without expiration_date lands in the product's default (undated) batch; an unparseable expiration_date is a per-index 422.",
         "parameters": [],
         "responses": {
           "200": {
@@ -298,14 +349,15 @@
         }
       },
       "post": {
-        "summary": "Creates an inventory item",
+        "summary": "Adds stock to a product, growing its default batch or a dated batch",
         "tags": [
           "InventoryItems"
         ],
+        "description": "Additive, and the same rule as a one-element POST /v1/inventory_items/bulk. Without expiration_date (omitted or null) the quantity is added to the product's default batch — its single undated batch — which is created if absent; a product never holds more than one undated batch. With expiration_date the quantity is added to the batch with that exact date, or a new batch is created. 201 when a batch was created, 200 when an existing one grew; the body is the batch either way. An unparseable expiration_date is a 422 rather than a silent fall-through to the default batch.",
         "parameters": [],
         "responses": {
           "201": {
-            "description": "coerces JSON string quantity via numericality",
+            "description": "creates the default batch alongside dated batches, leaving them untouched",
             "content": {
               "application/json": {
                 "schema": {
@@ -315,11 +367,21 @@
             }
           },
           "422": {
-            "description": "rejects fractional quantity for unit_type=unit",
+            "description": "rejects an unparseable expiration_date instead of landing it in the default batch",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/error_envelope"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "merges an uppercase product_id into the existing default batch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inventory_item"
                 }
               }
             }
@@ -455,6 +517,7 @@
         "tags": [
           "InventoryItems"
         ],
+        "description": "JSON Merge Patch on one batch; quantity is absolute. Clearing expiration_date (null) is a 422 when the product already has an undated default batch — a product holds at most one. An unparseable expiration_date is a 422 as not a valid date.",
         "parameters": [],
         "responses": {
           "200": {
@@ -468,7 +531,7 @@
             }
           },
           "422": {
-            "description": "rejects fractional quantity on unit_type=unit",
+            "description": "rejects an unparseable expiration_date as not a valid date, not as a default-batch conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -525,10 +588,11 @@
         "tags": [
           "InventoryItems"
         ],
+        "description": "Additive: entries are grouped by (product_id, expiration_date) and each group grows the oldest existing batch with that key or creates one. An undated entry lands in the product's default batch (at most one per product). An unparseable expiration_date is a per-index 422; omit it or send null for the default batch. All-or-nothing.",
         "parameters": [],
         "responses": {
           "201": {
-            "description": "allows past expiration_date when merging into a matching existing batch",
+            "description": "groups lowercase and uppercase ids for one product into one default batch",
             "content": {
               "application/json": {
                 "schema": {
@@ -538,7 +602,7 @@
             }
           },
           "422": {
-            "description": "shape-fails on missing quantity",
+            "description": "shape-fails on an unparseable expiration_date, writing nothing",
             "content": {
               "application/json": {
                 "schema": {
@@ -2350,6 +2414,63 @@
         },
         "required": [
           "verified"
+        ]
+      },
+      "inventory_consume_request": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "product_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "quantity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMinimum": true
+                }
+              },
+              "required": [
+                "product_id",
+                "quantity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "inventory_consume_response": {
+        "type": "object",
+        "properties": {
+          "consumed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "product_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "total_quantity": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "product_id",
+                "total_quantity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "consumed"
         ]
       }
     }

@@ -105,5 +105,54 @@ RSpec.describe InventoryItem, type: :model do
         expect(item.update(expiration_date: Date.current - 5)).to be(true)
       end
     end
+
+    describe "single_default_batch_per_product" do
+      let(:product) { create(:product) }
+
+      it "rejects a second undated batch on expiration_date" do
+        create(:inventory_item, product: product, expiration_date: nil)
+        item = build(:inventory_item, product: product, expiration_date: nil)
+
+        expect(item).not_to be_valid
+        expect(item.errors[:expiration_date]).to eq([ "must be present: product already has an undated batch" ])
+      end
+
+      it "lets the undated batch update itself" do
+        item = create(:inventory_item, product: product, expiration_date: nil)
+        item.quantity = 9
+
+        expect(item).to be_valid
+      end
+
+      it "allows a dated batch alongside the undated one" do
+        create(:inventory_item, product: product, expiration_date: nil)
+
+        expect(build(:inventory_item, product: product, expiration_date: Date.current + 3)).to be_valid
+      end
+
+      it "allows an undated batch for a different product" do
+        create(:inventory_item, product: product, expiration_date: nil)
+
+        expect(build(:inventory_item, expiration_date: nil)).to be_valid
+      end
+    end
+
+    describe "expiration_date_must_parse" do
+      let(:product) { create(:product) }
+
+      it "rejects a garbage string with exactly one expiration_date error, even beside a default batch" do
+        create(:inventory_item, product: product, expiration_date: nil)
+        item = create(:inventory_item, product: product, expiration_date: Date.current + 3)
+        item.expiration_date = "soon"
+
+        expect(item).not_to be_valid
+        expect(item.errors[:expiration_date]).to eq([ "is not a valid date" ])
+      end
+
+      it "accepts a blank string and nil" do
+        expect(build(:inventory_item, product: product, expiration_date: "")).to be_valid
+        expect(build(:inventory_item, product: product, expiration_date: nil)).to be_valid
+      end
+    end
   end
 end

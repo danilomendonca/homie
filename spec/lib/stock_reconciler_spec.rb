@@ -196,20 +196,9 @@ RSpec.describe StockReconciler do
       expect(undated.reload.quantity).to eq(4)
     end
 
-    it "grows the oldest of several undated batches and leaves the others alone" do
-      older = create(:inventory_item, product: product, quantity: 1, expiration_date: nil)
-      newer = create(:inventory_item, product: product, quantity: 1, expiration_date: nil)
-      older.update_column(:created_at, 2.days.ago)
-
-      described_class.new([ entry(0, product.id, 5) ]).apply!
-
-      expect(older.reload.quantity).to eq(4)
-      expect(newer.reload.quantity).to eq(1)
-    end
-
     it "deletes every batch when counted to zero, including one already at zero" do
       create(:inventory_item, product: product, quantity: 3)
-      create(:inventory_item, product: product, quantity: 0)
+      create(:inventory_item, product: product, quantity: 0, expiration_date: Date.current + 5)
 
       described_class.new([ entry(0, product.id, 0) ]).apply!
 

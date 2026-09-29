@@ -44,6 +44,17 @@ RSpec.describe InventoryBatchApplier do
         .to eq([ { field: "quantity", message: "is not a number" } ])
     end
 
+    it "reports an unparseable expiration_date rather than treating it as undated" do
+      applier = described_class.new([ entry(0, product.id, 1, "soon") ])
+
+      expect(applier.shape_failures.first[:errors])
+        .to eq([ { field: "expiration_date", message: "is not a valid date" } ])
+    end
+
+    it "treats a blank expiration_date as undated, not unparseable" do
+      expect(described_class.new([ entry(0, product.id, 1, "") ]).shape_failures).to eq([])
+    end
+
     it "sorts failures by index" do
       applier = described_class.new([ entry(3, product.id, -1), entry(1, product.id, nil) ])
 
@@ -94,6 +105,24 @@ RSpec.describe InventoryBatchApplier do
       expect(group[:was_new]).to be(false)
       expect(group[:record].id).to eq(older.id)
       expect(group[:record].quantity).to eq(6)
+    end
+  end
+
+  describe "product id casting" do
+    it "groups lowercase and uppercase ids for one product together" do
+      applier = described_class.new([ entry(0, product.id, 1), entry(1, product.id.upcase, 2) ])
+
+      expect(applier.groups.length).to eq(1)
+      expect(applier.groups.first[:record].quantity).to eq(3)
+      expect(applier.groups.first[:record].product_id).to eq(product.id)
+    end
+
+    it "merges an uppercase id into the existing default batch" do
+      existing = create(:inventory_item, product: product, quantity: 1)
+      applier = described_class.new([ entry(0, product.id.upcase, 2) ])
+
+      expect(applier.group_failures).to eq([])
+      expect(applier.groups.first[:record].id).to eq(existing.id)
     end
   end
 
